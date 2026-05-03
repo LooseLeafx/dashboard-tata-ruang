@@ -1,0 +1,39 @@
+# ============================================================
+# STREAMLIT CONFIGURATION
+# ============================================================
+
+[theme]
+primaryColor = "#27ae60"
+backgroundColor = "#eef2f0"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#0b3327"
+font = "sans serif"
+
+[client]
+showErrorDetails = false
+toolbarMode = "minimal"
+showSidebarNavigation = true
+
+[server]
+# Maximum file upload size in MB
+maxUploadSize = 200
+
+# Enable/disable features
+enableCORS = false
+enableXsrfProtection = true
+
+# Port configuration
+port = 8501
+address = "0.0.0.0"
+
+# Timeouts
+maxMessageSize = 200
+scriptHeartbeatInterval = 30
+clientConnectionTimeout = 180
+
+[logger]
+level = "info"
+
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"

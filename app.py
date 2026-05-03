@@ -28,18 +28,18 @@ def setup_google_drive():
     """Setup Google Drive API untuk penyimpanan layer permanen"""
     global DRIVE_FOLDER_ID, DRIVE_SERVICE
     try:
-        # Load folder ID dari drive_config.json
-        with open("drive_config.json", "r") as f:
-            config = json.load(f)
-            DRIVE_FOLDER_ID = config.get("folder_id")
-        
-        # Setup Google Drive API
+        # Load folder ID dari Streamlit Secrets
+        DRIVE_FOLDER_ID = st.secrets["drive_config"]["folder_id"]
+
+        # Setup Google Drive API menggunakan service account dari Secrets
         from google.auth.transport.requests import Request
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
-        
-        creds = Credentials.from_service_account_file(
-            "credentials.json",
+
+        sa_info = dict(st.secrets["gcp_service_account"])
+        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+        creds = Credentials.from_service_account_info(
+            sa_info,
             scopes=['https://www.googleapis.com/auth/drive.file']
         )
         DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
@@ -855,12 +855,12 @@ def buat_rekapitulasi_srs(df, C_SRS, C_PAGU, df_base=None):
 # 3A. SISTEM LOGIN
 # ============================================================
 def load_credentials():
-    """Memuat kredensial dari file credentials.json"""
+    """Memuat kredensial dari Streamlit Secrets"""
     try:
-        with open("credentials.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        st.error("File credentials.json tidak ditemukan!")
+        users = st.secrets["credentials"]["users"]
+        return {"users": [dict(u) for u in users]}
+    except Exception:
+        st.error("Kredensial tidak ditemukan di Streamlit Secrets!")
         return None
 
 
@@ -1237,7 +1237,9 @@ def load_data():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/spreadsheets"
     ]
-    creds  = ServiceAccountCredentials.from_json_keyfile_name("kunci_akses.json", scope)
+    sa_info = dict(st.secrets["gcp_service_account"])
+    sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+    creds  = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scope)
     client = gspread.authorize(creds)
     url    = "https://docs.google.com/spreadsheets/d/1cmrPSupCKyj43RqXSWHfQY22gIo8RwX_Oj-uoF0Fdj0/edit#gid=0"
     sheet  = client.open_by_url(url).sheet1
@@ -2792,13 +2794,11 @@ document.addEventListener('DOMContentLoaded', function() {
             )
 
         # ── Konfigurasi Google Drive ─────────────────────────
-        # ID folder Google Drive (isi di file drive_config.json atau langsung di sini)
+        # ID folder Google Drive dari Streamlit Secrets
         DRIVE_FOLDER_ID = ""
         try:
-            with open("drive_config.json", "r") as _f:
-                _dcfg = json.load(_f)
-                DRIVE_FOLDER_ID = _dcfg.get("folder_id", "")
-        except FileNotFoundError:
+            DRIVE_FOLDER_ID = st.secrets["drive_config"]["folder_id"]
+        except Exception:
             pass
 
         if not DRIVE_FOLDER_ID:
@@ -2873,8 +2873,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             from googleapiclient.discovery import build
 
                             scope_drive = ["https://www.googleapis.com/auth/drive.readonly"]
-                            creds_drive = ServiceAccountCredentials.from_json_keyfile_name(
-                                "kunci_akses.json", scope_drive
+                            sa_info_drive = dict(st.secrets["gcp_service_account"])
+                            sa_info_drive["private_key"] = sa_info_drive["private_key"].replace("\\n", "\n")
+                            creds_drive = ServiceAccountCredentials.from_json_keyfile_dict(
+                                sa_info_drive, scope_drive
                             )
                             import httplib2
                             http    = creds_drive.authorize(httplib2.Http())

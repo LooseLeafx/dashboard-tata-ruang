@@ -27,25 +27,37 @@ DRIVE_SERVICE = None
 def setup_google_drive():
     """Setup Google Drive API untuk penyimpanan layer permanen"""
     global DRIVE_FOLDER_ID, DRIVE_SERVICE
+    import sys
     try:
         # Load folder ID dari Streamlit Secrets
         DRIVE_FOLDER_ID = st.secrets["drive_config"]["folder_id"]
+        print(f"[DRIVE] folder_id: {DRIVE_FOLDER_ID}", file=sys.stderr)
 
-        # Setup Google Drive API menggunakan service account dari Secrets
-        from google.auth.transport.requests import Request
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
 
-        sa_info = dict(st.secrets["gcp_service_account"])
-        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+        sa_info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
+        pk = sa_info.get("private_key", "")
+        if "\\n" in pk:
+            pk = pk.replace("\\n", "\n")
+        sa_info["private_key"] = pk
+
+        print(f"[DRIVE] client_email: {sa_info.get('client_email')}", file=sys.stderr)
+
         creds = Credentials.from_service_account_info(
             sa_info,
-            scopes=['https://www.googleapis.com/auth/drive.file']
+            scopes=[
+                'https://www.googleapis.com/auth/drive',
+                'https://www.googleapis.com/auth/drive.file'
+            ]
         )
         DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
+        # Test koneksi
+        DRIVE_SERVICE.files().list(pageSize=1, fields="files(id)").execute()
+        print(f"[DRIVE] setup SUCCESS", file=sys.stderr)
         return True
     except Exception as e:
-        # Fallback ke penyimpanan lokal jika Google Drive tidak tersedia
+        print(f"[DRIVE] setup FAILED: {type(e).__name__}: {e}", file=sys.stderr)
         return False
 
 def upload_layer_to_drive(filename, file_content):

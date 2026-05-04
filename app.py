@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import geopandas as gpd
 from streamlit_folium import st_folium
 import folium
+from folium.plugins import MarkerCluster
 import fiona
 import os
 import json
@@ -1658,6 +1659,7 @@ try:
     # ─────────────────────────────────────────────────────────
     # TABS
     # ─────────────────────────────────────────────────────────
+    _active_tab = st.session_state.pop("active_tab", 0)
     tab_rekap, tab_peta, tab_data, tab_pendukung = st.tabs([
         "📊  Rekapitulasi",
         "🗺️  Peta Interaktif",
@@ -2132,12 +2134,16 @@ try:
                         st.rerun()
 
                 # ── Input pencarian lokasi ──
-                search_location = st.text_input(
-                    "🔍 Cari lokasi",
-                    placeholder="Cari kantor, desa, jalan, atau tempat lain...",
-                    key="map_search_location",
-                    label_visibility="collapsed"
-                )
+                _sc1, _sc2 = st.columns([5, 1])
+                with _sc1:
+                    search_location = st.text_input(
+                        "🔍 Cari lokasi",
+                        placeholder="Cari kantor, desa, jalan, atau tempat lain...",
+                        key="map_search_location",
+                        label_visibility="collapsed"
+                    )
+                with _sc2:
+                    btn_search_loc = st.button("🔍 Cari", key="btn_search_loc", use_container_width=True)
 
                 _bm = st.session_state.get("basemap_choice", "street")
                 m_map = folium.Map(location=map_location, zoom_start=map_zoom, tiles=None)
@@ -2256,60 +2262,118 @@ try:
                         lyr_name  = layer['name']
                         lyr_show  = layer['visible']
 
+                        # Pisahkan point dan non-point
+                        geom_types = gdf_layer.geometry.geom_type.unique()
+                        is_point   = all(gt in ('Point', 'MultiPoint') for gt in geom_types)
+
                         # Ambil semua kolom atribut (kecuali geometry) untuk tooltip
                         attr_cols = [c for c in gdf_layer.columns if c != 'geometry']
-                        # Batasi maks 8 kolom agar tooltip tidak terlalu panjang
-                        tooltip_fields   = attr_cols[:8]
-                        tooltip_aliases  = [f"{c}:" for c in tooltip_fields]
+                        tooltip_fields  = attr_cols[:8]
+                        tooltip_aliases = [f"{c}:" for c in tooltip_fields]
 
+                        # Tentukan warna per fitur
                         if cc_l['mode'] == 'single':
                             clr = cc_l['color']
-                            def _make_style(c):
-                                return lambda x: {
-                                    'color': c, 'fillColor': c,
-                                    'weight': 2, 'fillOpacity': 0.38, 'opacity': 0.9
-                                }
-                            folium.GeoJson(
-                                gdf_layer, name=lyr_name, show=lyr_show,
-                                style_function=_make_style(clr),
-                                tooltip=folium.GeoJsonTooltip(
-                                    fields=tooltip_fields,
-                                    aliases=tooltip_aliases,
-                                ) if tooltip_fields else None
-                            ).add_to(m_map)
+                            cat_col = None
+                            cmap_cat = {}
                         else:
                             pal_nm     = cc_l.get('palette', list(PALETTES.keys())[0])
                             pal_colors = PALETTES.get(pal_nm, list(PALETTES.values())[0])
-                            # Gunakan kolom pertama sebagai kategori warna (Name atau kolom pertama)
                             cat_col    = 'Name' if 'Name' in gdf_layer.columns else (attr_cols[0] if attr_cols else None)
-                            uniq_names = (gdf_layer[cat_col].dropna().unique().tolist()
-                                          if cat_col else [])
-                            cmap_cat   = {
-                                nm: pal_colors[idx % len(pal_colors)]
-                                for idx, nm in enumerate(uniq_names)
-                            }
-                            def _make_cat_style(cmap, fallback, col):
-                                def _s(feature):
-                                    nm = feature['properties'].get(col, '') if col else ''
-                                    c  = cmap.get(nm, fallback)
-                                    return {'color': c, 'fillColor': c,
-                                            'weight': 2, 'fillOpacity': 0.42, 'opacity': 0.9}
-                                return _s
-                            folium.GeoJson(
-                                gdf_layer, name=lyr_name, show=lyr_show,
-                                style_function=_make_cat_style(cmap_cat, pal_colors[0], cat_col),
-                                tooltip=folium.GeoJsonTooltip(
-                                    fields=tooltip_fields,
-                                    aliases=tooltip_aliases,
-                                ) if tooltip_fields else None
-                            ).add_to(m_map)
+                            uniq_names = gdf_layer[cat_col].dropna().unique().tolist() if cat_col else []
+                            cmap_cat   = {nm: pal_colors[idx % len(pal_colors)] for idx, nm in enumerate(uniq_names)}
+                            clr        = pal_colors[0]
+
+                        def _get_color(feature, _cmap, _clr, _col):
+                            if _col:
+                                nm = feature['properties'].get(_col, '')
+                                return _cmap.get(nm, _clr)
+                            return _clr
+
+                        if is_point:
+                            # Gunakan MarkerCluster untuk titik point
+                            cluster = MarkerCluster(name=lyr_name, show=lyr_show).add_to(m_map)
+                            for _, row in gdf_layer.iterrows():
+                                geom = row.geometry
+                                if geom is None:
+                                    continue
+                                # Ambil koordinat (support Point dan MultiPoint)
+                                if geom.geom_type == 'MultiPoint':
+                                    pts = list(geom.geoms)
+                                else:
+                                    pts = [geom]
+                                # Tentukan warna marker
+                                if cc_l['mode'] == 'palette' and cat_col:
+                                    nm  = row.get(cat_col, '')
+                                    pin_clr = cmap_cat.get(nm, clr)
+                                else:
+                                    pin_clr = clr
+                                # Convert hex ke nama warna folium (fallback ke red)
+                                folium_color_map = {
+                                    '#e41a1c': 'red',    '#d73027': 'red',
+                                    '#377eb8': 'blue',   '#2166ac': 'blue',
+                                    '#4daf4a': 'green',  '#1a9850': 'green',
+                                    '#984ea3': 'purple', '#762a83': 'purple',
+                                    '#ff7f00': 'orange', '#d73027': 'orange',
+                                    '#a65628': 'beige',  '#f781bf': 'pink',
+                                    '#252525': 'black',  '#525252': 'darkgray',
+                                }
+                                f_color = folium_color_map.get(pin_clr.lower(), 'red')
+                                # Buat popup & tooltip
+                                popup_html = "<br>".join(
+                                    f"<b>{c}:</b> {row.get(c,'')}" for c in tooltip_fields
+                                ) if tooltip_fields else lyr_name
+                                for pt in pts:
+                                    folium.Marker(
+                                        location=[pt.y, pt.x],
+                                        popup=folium.Popup(popup_html, max_width=280),
+                                        tooltip=str(row.get(tooltip_fields[0], lyr_name)) if tooltip_fields else lyr_name,
+                                        icon=folium.Icon(color=f_color, icon='circle', prefix='fa')
+                                    ).add_to(cluster)
+                        else:
+                            # Polygon / LineString — render seperti semula
+                            if cc_l['mode'] == 'single':
+                                def _make_style(c):
+                                    return lambda x: {
+                                        'color': c, 'fillColor': c,
+                                        'weight': 2, 'fillOpacity': 0.38, 'opacity': 0.9
+                                    }
+                                folium.GeoJson(
+                                    gdf_layer, name=lyr_name, show=lyr_show,
+                                    style_function=_make_style(clr),
+                                    tooltip=folium.GeoJsonTooltip(
+                                        fields=tooltip_fields, aliases=tooltip_aliases,
+                                    ) if tooltip_fields else None
+                                ).add_to(m_map)
+                            else:
+                                def _make_cat_style(cmap, fallback, col):
+                                    def _s(feature):
+                                        nm = feature['properties'].get(col, '') if col else ''
+                                        c  = cmap.get(nm, fallback)
+                                        return {'color': c, 'fillColor': c,
+                                                'weight': 2, 'fillOpacity': 0.42, 'opacity': 0.9}
+                                    return _s
+                                folium.GeoJson(
+                                    gdf_layer, name=lyr_name, show=lyr_show,
+                                    style_function=_make_cat_style(cmap_cat, clr, cat_col),
+                                    tooltip=folium.GeoJsonTooltip(
+                                        fields=tooltip_fields, aliases=tooltip_aliases,
+                                    ) if tooltip_fields else None
+                                ).add_to(m_map)
                     except Exception as layer_err:
                         st.warning("Layer '" + layer['name'] + "' gagal dimuat: " + str(layer_err))
 
                 # ── Pencarian lokasi & penambahan marker ──
-                if search_location and search_location.strip():
-                    geo_result = geocode_location(search_location)
-                    if geo_result['success']:
+                if (btn_search_loc or search_location) and search_location.strip():
+                    if "last_search_loc" not in st.session_state:
+                        st.session_state.last_search_loc = ""
+                    # Jalankan geocode jika tombol ditekan atau keyword berubah
+                    if btn_search_loc or search_location != st.session_state.last_search_loc:
+                        st.session_state.last_search_loc = search_location
+                        geo_result = geocode_location(search_location)
+                        st.session_state.last_geo_result = geo_result
+                    geo_result = st.session_state.get("last_geo_result", {"success": False})
+                    if geo_result.get('success'):
                         lat, lon = geo_result['lat'], geo_result['lon']
                         folium.Marker(
                             location=[lat, lon],
@@ -2317,14 +2381,13 @@ try:
                             icon=folium.Icon(color='red', icon='search', prefix='fa'),
                             name='Hasil Pencarian Lokasi'
                         ).add_to(m_map)
-                        # Update map zoom ke lokasi yang ditemukan
                         m_map.location = [lat, lon]
                         m_map.zoom_start = 13
                     else:
-                        st.warning(f"❌ Pencarian lokasi '{search_location}' gagal: {geo_result.get('error', 'Tidak ditemukan')}")
+                        st.warning(f"❌ Lokasi '{search_location}' tidak ditemukan. Coba kata kunci lain.")
 
-                # LayerControl – sembunyikan entry internal via JS
-                folium.LayerControl(collapsed=False, position='topright').add_to(m_map)
+                # LayerControl – collapsed (ikon tumpuk, buka saat diklik)
+                folium.LayerControl(collapsed=True, position='topright').add_to(m_map)
                 hide_internal = folium.Element("""
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -2757,12 +2820,24 @@ document.addEventListener('DOMContentLoaded', function() {
             if df_pend_filtered.empty:
                 st.info("Tidak ada data kegiatan yang sesuai kata kunci tersebut.")
             else:
+                # Filter tahun anggaran di data pendukung
+                if C_TAHUN:
+                    tahun_opts = sorted(df_pend_filtered[C_TAHUN].dropna().unique())
+                    sel_tahun_pend = st.multiselect(
+                        "📅 Filter Tahun Anggaran",
+                        tahun_opts,
+                        placeholder="Semua tahun",
+                        key="pend_tahun_filter"
+                    )
+                    if sel_tahun_pend:
+                        df_pend_filtered = df_pend_filtered[df_pend_filtered[C_TAHUN].isin(sel_tahun_pend)]
+
                 _pm1, _pm2, _pm3 = st.columns(3)
                 _pm1.metric("Jumlah Kegiatan", f"{len(df_pend_filtered):,}")
                 _pm2.metric("Total Pagu", fmt_rp_full(df_pend_filtered[C_PAGU].sum()))
                 _pm3.metric("Jumlah OPD", str(df_pend_filtered[C_OPD].nunique() if C_OPD else "-"))
 
-                _show_cols = [c for c in [C_OPD, C_PELAYAN, C_FOKUS, C_PAGU] if c]
+                _show_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_FOKUS, C_PAGU] if c]
                 _df_show = df_pend_filtered[_show_cols].copy()
                 if C_PAGU in _df_show.columns:
                     _df_show[C_PAGU] = _df_show[C_PAGU].apply(fmt_rp_full)
@@ -2794,8 +2869,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     f"<tbody>{_tr}</tbody></table></div>{_note}",
                     unsafe_allow_html=True
                 )
-                if st.button("Lihat Semua di Data Lengkap", key="btn_goto_data_pend"):
+                if st.button("Lihat Semua di Data Lengkap →", key="btn_goto_data_pend", use_container_width=True):
                     st.session_state["data_search_prefill"] = kw_p
+                    st.session_state["active_tab"] = 2  # index tab Data Lengkap
                     st.rerun()
 
             st.markdown("<hr style='margin:14px 0;'>", unsafe_allow_html=True)
@@ -3043,45 +3119,6 @@ document.addEventListener('DOMContentLoaded', function() {
                                     "<div style='overflow:auto;border-radius:10px;"                                    "border:1px solid #dce8e2;margin-top:8px;'>"                                    "<table style='border-collapse:collapse;width:100%;'>"                                    f"<thead><tr>{th_cells_p}</tr></thead>"                                    f"<tbody>{tr_rows_p}</tbody>"                                    "</table></div>"
                                 )
                                 st.markdown(table_html_p, unsafe_allow_html=True)
-
-                                # Ekspander per file untuk detail card
-                                with st.expander("📋 Lihat Detail per File", expanded=False):
-                                    for file in files_dedup:
-                                        mime          = file.get('mimeType', '')
-                                        ico, mime_lbl = MIME_ICONS.get(mime, ('📎', 'File'))
-                                        size_b        = int(file.get('size', 0) or 0)
-                                        size_s        = (
-                                            f"{size_b/1_048_576:.1f} MB" if size_b > 1_048_576
-                                            else f"{size_b/1024:.0f} KB" if size_b > 1024
-                                            else f"{size_b} B"
-                                        ) if size_b else "–"
-                                        mod  = file.get('modifiedTime', '')[:10]
-                                        link = file.get('webViewLink', '#')
-                                        st.markdown(
-                                            f"""<div style="display:flex;align-items:center;
-                                             gap:12px;padding:10px 14px;margin-bottom:8px;
-                                             background:#f8fdf9;border:1px solid #dce8e2;
-                                             border-radius:10px;border-left:3px solid #27ae60;">
-                                              <span style="font-size:1.4rem;">{ico}</span>
-                                              <div style="flex:1;min-width:0;">
-                                                <a href="{link}" target="_blank"
-                                                   style="font-size:0.82rem;font-weight:600;
-                                                   color:#0b3327;text-decoration:none;
-                                                   word-break:break-word;">{file['name']}</a>
-                                                <div style="font-size:0.68rem;color:#7a9a8a;
-                                                     margin-top:2px;">
-                                                  {mime_lbl} &nbsp;·&nbsp; {size_s}
-                                                  &nbsp;·&nbsp; Diperbarui: {mod}
-                                                </div>
-                                              </div>
-                                              <a href="{link}" target="_blank"
-                                                 style="font-size:0.72rem;background:#0b3327;
-                                                 color:#fff;padding:5px 12px;border-radius:6px;
-                                                 text-decoration:none;white-space:nowrap;
-                                                 flex-shrink:0;">Buka ↗</a>
-                                            </div>""",
-                                            unsafe_allow_html=True
-                                        )
                             else:
                                 n_folders = len(all_folder_ids)
                                 st.info(

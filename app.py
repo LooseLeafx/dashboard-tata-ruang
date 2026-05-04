@@ -277,10 +277,11 @@ def get_layer_file_path(layer):
 
 
 def read_layer_geodataframe(layer_path, layer_type):
-    """Baca file layer menjadi GeoDataFrame sesuai tipenya.
-    Untuk KMZ/KML dari ArcMap, atribut sering tersimpan di dalam
-    field 'description' sebagai tabel HTML — fungsi ini mem-parse-nya
-    menjadi kolom terpisah.
+    """Baca file layer menjadi GeoDataFrame.
+    Mendukung dua format ArcMap KML/KMZ:
+    - Format A (point):   <tr><td>KEY</td><td>VAL</td></tr>
+    - Format B (polygon): <tr><th>K1</th><th>K2</th></tr>
+                          <tr><td>V1</td><td>V2</td></tr>
     """
     import zipfile, tempfile, re
     ltype = layer_type or 'kmz'
@@ -297,45 +298,62 @@ def read_layer_geodataframe(layer_path, layer_type):
             if gdf.crs and gdf.crs.to_epsg() != 4326:
                 gdf = gdf.to_crs(epsg=4326)
             return gdf
-    else:
-        fiona.drvsupport.supported_drivers['KML']    = 'rw'
-        fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
-        gdf = gpd.read_file(layer_path, driver='KML')
 
-        # Cek apakah kolom 'description' ada dan kolom atribut asli tidak terbaca
-        # (ArcMap menyimpan atribut sebagai tabel HTML di dalam description)
-        if 'description' in gdf.columns:
-            # Coba parse satu baris untuk deteksi apakah ada tabel HTML
-            sample = str(gdf['description'].dropna().iloc[0]) if not gdf['description'].dropna().empty else ''
-            has_table = '<table' in sample.lower() or '<td' in sample.lower()
+    # KML / KMZ
+    fiona.drvsupport.supported_drivers['KML']    = 'rw'
+    fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
+    gdf = gpd.read_file(layer_path, driver='KML')
 
-            if has_table:
-                # Parse semua baris
-                parsed_rows = []
-                for desc in gdf['description']:
-                    row_dict = {}
-                    desc_str = str(desc) if desc else ''
-                    # Cari semua pasangan <td>key</td><td>value</td>
-                    # Format ArcMap: <tr><td>FIELD</td><td>VALUE</td></tr>
-                    tds = re.findall(r'<td[^>]*>(.*?)</td>', desc_str,
-                                     re.IGNORECASE | re.DOTALL)
-                    # tds berupa list: [key1, val1, key2, val2, ...]
-                    for i in range(0, len(tds) - 1, 2):
-                        key = re.sub(r'<[^>]+>', '', tds[i]).strip()
-                        val = re.sub(r'<[^>]+>', '', tds[i+1]).strip()
-                        if key:
-                            row_dict[key] = val
-                    parsed_rows.append(row_dict)
-
-                if parsed_rows and any(parsed_rows):
-                    df_attrs = pd.DataFrame(parsed_rows)
-                    # Gabungkan ke GeoDataFrame (drop description agar tidak dobel)
-                    gdf = gdf.drop(columns=['description'], errors='ignore')
-                    for col in df_attrs.columns:
-                        if col not in gdf.columns:
-                            gdf[col] = df_attrs[col].values
-
+    if 'description' not in gdf.columns:
         return gdf
+
+    descs = gdf['description'].fillna('')
+    sample = str(descs.iloc[0]) if len(descs) > 0 else ''
+    if not ('<td' in sample.lower() or '<th' in sample.lower()):
+        return gdf
+
+    def _strip(s):
+        return re.sub(r'<[^>]+>', '', s).strip()
+
+    def _parse(desc_str):
+        s = str(desc_str)
+        tr_blocks = re.findall(r'<tr[^>]*>(.*?)</tr>', s, re.I | re.S)
+        if not tr_blocks:
+            return {}
+        # Deteksi Format B: baris pertama punya <th>
+        first_ths = re.findall(r'<th[^>]*>(.*?)</th>', tr_blocks[0], re.I | re.S)
+        if first_ths:
+            # Format B: header di baris pertama, nilai di baris berikutnya
+            headers = [_strip(h) for h in first_ths]
+            result  = {}
+            for tr in tr_blocks[1:]:
+                tds = re.findall(r'<td[^>]*>(.*?)</td>', tr, re.I | re.S)
+                for i, td in enumerate(tds):
+                    if i < len(headers) and headers[i]:
+                        result[headers[i]] = _strip(td)
+            return result
+        else:
+            # Format A: setiap baris = KEY | VALUE
+            result = {}
+            for tr in tr_blocks:
+                tds = re.findall(r'<td[^>]*>(.*?)</td>', tr, re.I | re.S)
+                if len(tds) >= 2:
+                    k = _strip(tds[0])
+                    v = _strip(tds[1])
+                    if k:
+                        result[k] = v
+            return result
+
+    parsed = [_parse(d) for d in descs]
+    if not any(parsed):
+        return gdf
+
+    df_attr = pd.DataFrame(parsed)
+    gdf = gdf.drop(columns=['description'], errors='ignore')
+    for col in df_attr.columns:
+        if col not in gdf.columns:
+            gdf[col] = df_attr[col].values
+    return gdf
 
 def geocode_location(query):
     """Geocode lokasi menggunakan Nominatim API (OpenStreetMap)"""
@@ -1478,7 +1496,7 @@ try:
             "<div style='margin-top:4px;margin-bottom:2px;"
             "font-size:1rem;font-weight:800;color:#fff;'>Taru-Istimewa</div>"
             "<div style='font-size:0.6rem;color:rgba(255,255,255,0.4);'>"
-            "Data Urusan Keistimewaa Tata Ruang </div>",
+            "Data Tata Ruang · DIY</div>",
             unsafe_allow_html=True
         )
         st.markdown(
@@ -2186,7 +2204,13 @@ try:
                     btn_search_loc = st.button("🔍 Cari", key="btn_search_loc", use_container_width=True)
 
                 _bm = st.session_state.get("basemap_choice", "street")
-                m_map = folium.Map(location=map_location, zoom_start=map_zoom, tiles=None)
+                m_map = folium.Map(
+                    location=map_location,
+                    zoom_start=map_zoom,
+                    tiles=None,
+                    max_zoom=22,
+                    control_scale=True
+                )
                 if _bm == "sat":
                     folium.TileLayer(
                         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -2220,7 +2244,19 @@ try:
                         choropleth._children[key].render = lambda **kwargs: ""
                         break
 
+                # Toggle legend hide/unhide
+                _leg_col1, _leg_col2 = st.columns([5,1])
+                with _leg_col2:
+                    if st.button(
+                        "🔲 Sembunyikan Legenda" if not st.session_state.get("hide_legend") else "🔳 Tampilkan Legenda",
+                        key="btn_toggle_legend",
+                        use_container_width=True
+                    ):
+                        st.session_state["hide_legend"] = not st.session_state.get("hide_legend", False)
+                        st.rerun()
+
                 # Legenda kustom 5 kategori
+                if not st.session_state.get("hide_legend", False):
                 BREAKPOINTS = [0, 6_500_000_000, 100_000_000_000,
                                500_000_000_000, 1_000_000_000_000]
                 LEGEND_LABELS = ["Sangat Rendah","Rendah","Sedang","Tinggi","Sangat Tinggi"]
@@ -2262,6 +2298,7 @@ try:
                     + legend_rows + "</div>"
                 )
                 m_map.get_root().html.add_child(folium.Element(legend_html))
+                # tutup if not hide_legend
 
                 # Highlight SRS yang dipilih
                 if selected_srs:
@@ -2594,7 +2631,7 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>"""
                 m_map.get_root().html.add_child(folium.Element(geocoder_html))
 
-                st_folium(m_map, use_container_width=True, height=480)
+                st_folium(m_map, use_container_width=True, height=620)
 
 
             except Exception as map_err:
@@ -2734,8 +2771,35 @@ document.addEventListener('DOMContentLoaded', function() {
                                 key=f"btn_goto_data_srs_{hash(_sel_nm)}",
                                 use_container_width=True
                             ):
-                                st.session_state["data_search_prefill"] = _sel_nm
+                                k = f"show_full_{hash(_sel_nm)}"
+                                st.session_state[k] = not st.session_state.get(k, False)
                                 st.rerun()
+
+                            if st.session_state.get(f"show_full_{hash(_sel_nm)}", False):
+                                _df_full = df[
+                                    df[C_SRS].astype(str).str.contains(_sel_nm, case=False, na=False)
+                                ].copy()
+                                _df_disp = _df_full.copy()
+                                if C_PAGU in _df_disp.columns:
+                                    _df_disp[C_PAGU] = _df_disp[C_PAGU].apply(fmt_rp_full)
+                                st.markdown(
+                                    f"<div style='margin:8px 0 4px;font-size:0.78rem;"
+                                    f"font-weight:700;color:#0b3327;'>Semua {len(_df_full):,} "
+                                    f"kegiatan di <span style='color:#27ae60;'>{_sel_nm}</span></div>",
+                                    unsafe_allow_html=True
+                                )
+                                st.dataframe(_df_disp, use_container_width=True,
+                                             hide_index=True, height=400)
+                                import io as _io
+                                _buf = _io.BytesIO()
+                                _df_full.to_excel(_buf, index=False, engine='openpyxl')
+                                st.download_button(
+                                    f"⬇️ Export Excel — {_sel_nm}",
+                                    data=_buf.getvalue(),
+                                    file_name=f"data_{_sel_nm.replace(' ','_')}.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                    key=f"dl_xl_{hash(_sel_nm)}"
+                                )
                         else:
                             st.info(f"Tidak ada kegiatan yang tercatat di {_sel_nm}.")
 
@@ -2757,12 +2821,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 unsafe_allow_html=True
             )
         with hdr2:
-            csv_bytes = df.to_csv(index=False).encode('utf-8')
+            import io as _io3
+            _buf3 = _io3.BytesIO()
+            df.to_excel(_buf3, index=False, engine='openpyxl')
             st.download_button(
-                "⬇️  Unduh CSV",
-                data=csv_bytes,
-                file_name="taru_istimewa_data.csv",
-                mime="text/csv",
+                "⬇️ Export Excel",
+                data=_buf3.getvalue(),
+                file_name="taru_istimewa_data.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
 
@@ -2990,9 +3056,32 @@ document.addEventListener('DOMContentLoaded', function() {
                     unsafe_allow_html=True
                 )
                 if st.button("Lihat Semua di Data Lengkap →", key="btn_goto_data_pend", use_container_width=True):
-                    st.session_state["data_search_prefill"] = kw_p
-                    st.session_state["active_tab"] = 2  # index tab Data Lengkap
+                    st.session_state["show_full_pend"] = not st.session_state.get("show_full_pend", False)
                     st.rerun()
+
+                if st.session_state.get("show_full_pend", False):
+                    _df_pf = df_pend_filtered.copy()
+                    _df_pf_disp = _df_pf.copy()
+                    if C_PAGU in _df_pf_disp.columns:
+                        _df_pf_disp[C_PAGU] = _df_pf_disp[C_PAGU].apply(fmt_rp_full)
+                    st.markdown(
+                        f"<div style='margin:8px 0 4px;font-size:0.78rem;font-weight:700;"
+                        f"color:#0b3327;'>Semua {len(_df_pf):,} data untuk kata kunci "
+                        f"<span style='color:#27ae60;'>{kw_p}</span></div>",
+                        unsafe_allow_html=True
+                    )
+                    st.dataframe(_df_pf_disp, use_container_width=True,
+                                 hide_index=True, height=400)
+                    import io as _io2
+                    _buf2 = _io2.BytesIO()
+                    _df_pf.to_excel(_buf2, index=False, engine='openpyxl')
+                    st.download_button(
+                        f"⬇️ Export Excel — {kw_p}",
+                        data=_buf2.getvalue(),
+                        file_name=f"data_{kw_p.replace(' ','_')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dl_xl_pend"
+                    )
 
             st.markdown("<hr style='margin:14px 0;'>", unsafe_allow_html=True)
             st.markdown(

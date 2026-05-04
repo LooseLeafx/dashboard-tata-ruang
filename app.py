@@ -277,9 +277,14 @@ def get_layer_file_path(layer):
 
 
 def read_layer_geodataframe(layer_path, layer_type):
-    """Baca file layer menjadi GeoDataFrame sesuai tipenya"""
-    import zipfile, tempfile
+    """Baca file layer menjadi GeoDataFrame sesuai tipenya.
+    Untuk KMZ/KML dari ArcMap, atribut sering tersimpan di dalam
+    field 'description' sebagai tabel HTML — fungsi ini mem-parse-nya
+    menjadi kolom terpisah.
+    """
+    import zipfile, tempfile, re
     ltype = layer_type or 'kmz'
+
     if ltype == 'shp':
         with zipfile.ZipFile(layer_path, 'r') as z:
             tmpdir = tempfile.mkdtemp()
@@ -293,9 +298,44 @@ def read_layer_geodataframe(layer_path, layer_type):
                 gdf = gdf.to_crs(epsg=4326)
             return gdf
     else:
-        fiona.drvsupport.supported_drivers['KML'] = 'rw'
+        fiona.drvsupport.supported_drivers['KML']    = 'rw'
         fiona.drvsupport.supported_drivers['LIBKML'] = 'rw'
-        return gpd.read_file(layer_path, driver='KML')
+        gdf = gpd.read_file(layer_path, driver='KML')
+
+        # Cek apakah kolom 'description' ada dan kolom atribut asli tidak terbaca
+        # (ArcMap menyimpan atribut sebagai tabel HTML di dalam description)
+        if 'description' in gdf.columns:
+            # Coba parse satu baris untuk deteksi apakah ada tabel HTML
+            sample = str(gdf['description'].dropna().iloc[0]) if not gdf['description'].dropna().empty else ''
+            has_table = '<table' in sample.lower() or '<td' in sample.lower()
+
+            if has_table:
+                # Parse semua baris
+                parsed_rows = []
+                for desc in gdf['description']:
+                    row_dict = {}
+                    desc_str = str(desc) if desc else ''
+                    # Cari semua pasangan <td>key</td><td>value</td>
+                    # Format ArcMap: <tr><td>FIELD</td><td>VALUE</td></tr>
+                    tds = re.findall(r'<td[^>]*>(.*?)</td>', desc_str,
+                                     re.IGNORECASE | re.DOTALL)
+                    # tds berupa list: [key1, val1, key2, val2, ...]
+                    for i in range(0, len(tds) - 1, 2):
+                        key = re.sub(r'<[^>]+>', '', tds[i]).strip()
+                        val = re.sub(r'<[^>]+>', '', tds[i+1]).strip()
+                        if key:
+                            row_dict[key] = val
+                    parsed_rows.append(row_dict)
+
+                if parsed_rows and any(parsed_rows):
+                    df_attrs = pd.DataFrame(parsed_rows)
+                    # Gabungkan ke GeoDataFrame (drop description agar tidak dobel)
+                    gdf = gdf.drop(columns=['description'], errors='ignore')
+                    for col in df_attrs.columns:
+                        if col not in gdf.columns:
+                            gdf[col] = df_attrs[col].values
+
+        return gdf
 
 def geocode_location(query):
     """Geocode lokasi menggunakan Nominatim API (OpenStreetMap)"""
@@ -1438,7 +1478,7 @@ try:
             "<div style='margin-top:4px;margin-bottom:2px;"
             "font-size:1rem;font-weight:800;color:#fff;'>Taru-Istimewa</div>"
             "<div style='font-size:0.6rem;color:rgba(255,255,255,0.4);'>"
-            "Data Tata Ruang · DIY</div>",
+            "Data Urusan Keistimewaa Tata Ruang </div>",
             unsafe_allow_html=True
         )
         st.markdown(

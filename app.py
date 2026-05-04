@@ -1438,7 +1438,7 @@ try:
             "<div style='margin-top:4px;margin-bottom:2px;"
             "font-size:1rem;font-weight:800;color:#fff;'>Taru-Istimewa</div>"
             "<div style='font-size:0.6rem;color:rgba(255,255,255,0.4);'>"
-            "Data Keistimewaan Tata Ruang</div>",
+            "Data Tata Ruang · DIY</div>",
             unsafe_allow_html=True
         )
         st.markdown(
@@ -2251,180 +2251,195 @@ try:
                 ).add_to(m_map)
 
                 # ── Render Layer Tambahan ──
+
+                # Field bawaan KML/KMZ dari ArcMap yang perlu disembunyikan
+                KML_SKIP = {
+                    'timestamp','begin','end','altitudemode','tessellate','extrude',
+                    'visibility','draworder','icon','description','styleurl','snippet',
+                    'lookat','camera','address','phonenumber','fid','objectid',
+                    'shape_leng','shape_area','shape_le_1'
+                }
+                EMPTY_VALS = {'none','nan','','null','-1','0.0','<null>'}
+
+                def _clean_attr_cols(gdf):
+                    """Kembalikan list kolom yang tidak kosong & bukan field bawaan KML."""
+                    all_cols = [c for c in gdf.columns if c != 'geometry']
+                    # Filter field bawaan
+                    filtered = [c for c in all_cols if c.lower() not in KML_SKIP]
+                    # Filter kolom yang SEMUA nilainya kosong
+                    result = []
+                    for c in filtered:
+                        non_empty = gdf[c].astype(str).str.strip().str.lower()
+                        if not non_empty.isin(EMPTY_VALS).all():
+                            result.append(c)
+                    return result
+
+                def _row_clean_fields(row, cols):
+                    """Kembalikan list kolom yang punya nilai untuk baris ini."""
+                    result = []
+                    for c in cols:
+                        val = str(row.get(c, '')).strip()
+                        if val.lower() not in EMPTY_VALS:
+                            result.append(c)
+                    return result
+
+                def _detect_foto_col(row, cols):
+                    """Deteksi kolom foto — URL http atau nama file gambar lokal."""
+                    for c in cols:
+                        val = str(row.get(c, '')).strip().lower()
+                        if (val.startswith('http') or
+                            any(val.endswith(ext) for ext in ('.jpg','.jpeg','.png','.webp','.gif')) or
+                            c.lower() in ('foto','photo','gambar','image','picture')):
+                            return c
+                    return None
+
+                def _build_popup_html(row, cols, foto_col, lyr_name, drive_folder_id=''):
+                    """Buat HTML popup dengan foto (jika ada) dan tabel atribut bersih."""
+                    foto_html = ""
+                    rows_html = ""
+                    for c in cols:
+                        val = str(row.get(c, '')).strip()
+                        if not val or val.lower() in EMPTY_VALS:
+                            continue
+                        if c == foto_col:
+                            # Konversi ke URL gambar
+                            img_url = None
+                            if val.startswith('http'):
+                                if 'drive.google.com/file/d/' in val:
+                                    fid = val.split('/file/d/')[1].split('/')[0]
+                                    img_url = f"https://drive.google.com/thumbnail?id={fid}&sz=w400"
+                                elif 'drive.google.com/open?id=' in val:
+                                    fid = val.split('id=')[1].split('&')[0]
+                                    img_url = f"https://drive.google.com/thumbnail?id={fid}&sz=w400"
+                                else:
+                                    img_url = val
+                            elif drive_folder_id and any(val.lower().endswith(e) for e in ('.jpg','.jpeg','.png')):
+                                # Nama file lokal — coba cari di Drive berdasarkan nama
+                                img_url = None  # tidak bisa resolve tanpa query API
+                                rows_html += (
+                                    f"<tr><td style='color:#7a9a8a;font-size:0.7rem;"
+                                    f"padding:2px 6px;white-space:nowrap;'>{c}</td>"
+                                    f"<td style='font-size:0.72rem;color:#1a3a2a;"
+                                    f"padding:2px 6px;'>{val}</td></tr>"
+                                )
+                                continue
+                            if img_url:
+                                foto_html = (
+                                    f"<div style='margin-bottom:8px;text-align:center;'>"
+                                    f"<img src='{img_url}' style='width:100%;max-width:280px;"
+                                    f"border-radius:6px;border:1px solid #ddd;' "
+                                    f"onerror=\"this.style.display='none';\"/></div>"
+                                )
+                                continue
+                        rows_html += (
+                            f"<tr><td style='color:#7a9a8a;font-size:0.7rem;"
+                            f"padding:2px 6px;white-space:nowrap;'>{c}</td>"
+                            f"<td style='font-size:0.72rem;color:#1a3a2a;"
+                            f"padding:2px 6px;word-break:break-word;max-width:200px;'>{val}</td></tr>"
+                        )
+                    table = (
+                        f"<table style='border-collapse:collapse;width:100%;'>"
+                        f"{rows_html}</table>"
+                    ) if rows_html else f"<span style='font-size:0.75rem;'>{lyr_name}</span>"
+                    return foto_html + table
+
                 for layer in st.session_state.extra_layers:
                     layer_path = get_layer_file_path(layer)
                     if not layer_path:
                         continue
                     try:
                         gdf_layer = read_layer_geodataframe(layer_path, layer.get('type', 'kmz'))
-                        cc_l      = layer.get('color_config',
-                                              {'mode': 'single', 'color': '#e74c3c'})
-                        lyr_name  = layer['name']
-                        lyr_show  = layer['visible']
+                        cc_l     = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
+                        lyr_name = layer['name']
+                        lyr_show = layer['visible']
 
-                        # Pisahkan point dan non-point
-                        geom_types = gdf_layer.geometry.geom_type.unique()
-                        is_point   = all(gt in ('Point', 'MultiPoint') for gt in geom_types)
+                        # Kolom bersih (berlaku untuk semua tipe geometri)
+                        clean_cols = _clean_attr_cols(gdf_layer)
 
-                        # Ambil semua kolom atribut (kecuali geometry) untuk tooltip
-                        attr_cols = [c for c in gdf_layer.columns if c != 'geometry']
-                        tooltip_fields  = attr_cols[:8]
-                        tooltip_aliases = [f"{c}:" for c in tooltip_fields]
-
-                        # Tentukan warna per fitur
+                        # Tentukan warna
                         if cc_l['mode'] == 'single':
                             clr = cc_l['color']
-                            cat_col = None
-                            cmap_cat = {}
+                            cat_col, cmap_cat = None, {}
                         else:
                             pal_nm     = cc_l.get('palette', list(PALETTES.keys())[0])
                             pal_colors = PALETTES.get(pal_nm, list(PALETTES.values())[0])
-                            cat_col    = 'Name' if 'Name' in gdf_layer.columns else (attr_cols[0] if attr_cols else None)
+                            cat_col    = 'Name' if 'Name' in gdf_layer.columns else (clean_cols[0] if clean_cols else None)
                             uniq_names = gdf_layer[cat_col].dropna().unique().tolist() if cat_col else []
-                            cmap_cat   = {nm: pal_colors[idx % len(pal_colors)] for idx, nm in enumerate(uniq_names)}
+                            cmap_cat   = {nm: pal_colors[i % len(pal_colors)] for i, nm in enumerate(uniq_names)}
                             clr        = pal_colors[0]
 
-                        def _get_color(feature, _cmap, _clr, _col):
-                            if _col:
-                                nm = feature['properties'].get(_col, '')
-                                return _cmap.get(nm, _clr)
-                            return _clr
+                        geom_types = gdf_layer.geometry.geom_type.dropna().unique()
+                        is_point   = all(gt in ('Point', 'MultiPoint') for gt in geom_types)
+                        is_line    = all(gt in ('LineString', 'MultiLineString') for gt in geom_types)
 
                         if is_point:
-                            # Gunakan MarkerCluster untuk titik point
+                            # ── Point: MarkerCluster dengan popup bersih ──
+                            folium_color_map = {
+                                '#e41a1c':'red','#d73027':'red','#377eb8':'blue',
+                                '#2166ac':'blue','#4daf4a':'green','#1a9850':'green',
+                                '#984ea3':'purple','#762a83':'purple','#ff7f00':'orange',
+                                '#a65628':'beige','#f781bf':'pink','#252525':'black',
+                                '#525252':'darkgray','#737373':'gray',
+                            }
                             cluster = MarkerCluster(name=lyr_name, show=lyr_show).add_to(m_map)
                             for _, row in gdf_layer.iterrows():
                                 geom = row.geometry
                                 if geom is None:
                                     continue
-                                # Ambil koordinat (support Point dan MultiPoint)
-                                if geom.geom_type == 'MultiPoint':
-                                    pts = list(geom.geoms)
-                                else:
-                                    pts = [geom]
-                                # Tentukan warna marker
-                                if cc_l['mode'] == 'palette' and cat_col:
-                                    nm  = row.get(cat_col, '')
-                                    pin_clr = cmap_cat.get(nm, clr)
-                                else:
-                                    pin_clr = clr
-                                # Convert hex ke nama warna folium (fallback ke red)
-                                folium_color_map = {
-                                    '#e41a1c': 'red',    '#d73027': 'red',
-                                    '#377eb8': 'blue',   '#2166ac': 'blue',
-                                    '#4daf4a': 'green',  '#1a9850': 'green',
-                                    '#984ea3': 'purple', '#762a83': 'purple',
-                                    '#ff7f00': 'orange', '#d73027': 'orange',
-                                    '#a65628': 'beige',  '#f781bf': 'pink',
-                                    '#252525': 'black',  '#525252': 'darkgray',
-                                }
+                                pts = list(geom.geoms) if geom.geom_type == 'MultiPoint' else [geom]
+                                pin_clr = cmap_cat.get(str(row.get(cat_col,'')), clr) if (cc_l['mode']=='palette' and cat_col) else clr
                                 f_color = folium_color_map.get(pin_clr.lower(), 'red')
-
-                                # Field bawaan KML yang perlu disembunyikan
-                                KML_SKIP_FIELDS = {
-                                    'timestamp', 'begin', 'end', 'altitudemode',
-                                    'tessellate', 'extrude', 'visibility',
-                                    'draworder', 'icon', 'description', 'styleurl',
-                                    'snippet', 'lookat', 'camera', 'address',
-                                    'phoneNumber', 'id', 'fid'
-                                }
-
-                                # Filter: hanya field yang ada isinya & bukan field bawaan KML
-                                def _clean_fields(row, all_fields):
-                                    result = []
-                                    for c in all_fields:
-                                        if c.lower() in KML_SKIP_FIELDS:
-                                            continue
-                                        val = str(row.get(c, '')).strip()
-                                        if val and val.lower() not in ('none', 'nan', '', '-1', 'null'):
-                                            result.append(c)
-                                    return result
-
-                                clean_fields = _clean_fields(row, attr_cols)
-
-                                # Deteksi kolom foto dari field yang sudah dibersihkan
-                                foto_col = None
-                                for fc in clean_fields:
-                                    val = str(row.get(fc, ''))
-                                    if any(kw in val.lower() for kw in
-                                           ['http', 'drive.google', '.jpg', '.jpeg',
-                                            '.png', 'foto', 'photo', 'gambar', 'image']):
-                                        foto_col = fc
-                                        break
-
-                                # Buat popup HTML dengan foto jika ada
-                                def _build_popup(row, fields, foto_col, lyr_name):
-                                    lines = []
-                                    foto_html = ""
-                                    for c in fields:
-                                        val = str(row.get(c, '')).strip()
-                                        if not val or val.lower() in ('none', 'nan'):
-                                            continue
-                                        if c == foto_col and val.startswith('http'):
-                                            img_url = val
-                                            if 'drive.google.com/file/d/' in val:
-                                                file_id = val.split('/file/d/')[1].split('/')[0]
-                                                img_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
-                                            elif 'drive.google.com/open?id=' in val:
-                                                file_id = val.split('id=')[1].split('&')[0]
-                                                img_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
-                                            foto_html = (
-                                                f"<div style='margin-bottom:8px;'>"
-                                                f"<img src='{img_url}' style='width:100%;"
-                                                f"max-width:280px;border-radius:6px;"
-                                                f"border:1px solid #ddd;' "
-                                                f"onerror=\"this.style.display='none';\"/></div>"
-                                            )
-                                        else:
-                                            lines.append(
-                                                f"<div style='margin:2px 0;'>"
-                                                f"<span style='color:#7a9a8a;font-size:0.72rem;'>{c}:</span> "
-                                                f"<span style='color:#1a3a2a;font-size:0.75rem;"
-                                                f"font-weight:500;'>{val}</span></div>"
-                                            )
-                                    body = "".join(lines) if lines else lyr_name
-                                    return foto_html + body
-
-                                popup_html = _build_popup(row, clean_fields, foto_col, lyr_name)
-                                # Tooltip: gunakan kolom Name atau field pertama yang bersih
-                                tooltip_val = str(row.get('Name', row.get(clean_fields[0], lyr_name) if clean_fields else lyr_name))
+                                row_cols  = _row_clean_fields(row, clean_cols)
+                                foto_col  = _detect_foto_col(row, row_cols)
+                                popup_html = _build_popup_html(row, row_cols, foto_col, lyr_name, DRIVE_FOLDER_ID or '')
+                                tip_val = str(row.get('Name', row.get(row_cols[0], lyr_name) if row_cols else lyr_name))
                                 for pt in pts:
                                     folium.Marker(
                                         location=[pt.y, pt.x],
                                         popup=folium.Popup(popup_html, max_width=300),
-                                        tooltip=tooltip_val,
+                                        tooltip=tip_val,
                                         icon=folium.Icon(color=f_color, icon='circle', prefix='fa')
                                     ).add_to(cluster)
+
                         else:
-                            # Polygon / LineString — render seperti semula
+                            # ── Polygon / Line: GeoJson dengan tooltip bersih ──
+                            # Untuk tooltip, gunakan kolom bersih yang ada nilainya
+                            tip_fields   = clean_cols[:6]
+                            tip_aliases  = [f"{c}:" for c in tip_fields]
+
+                            weight = 2 if not is_line else 3
+
                             if cc_l['mode'] == 'single':
-                                def _make_style(c):
+                                def _make_style(c, w):
                                     return lambda x: {
                                         'color': c, 'fillColor': c,
-                                        'weight': 2, 'fillOpacity': 0.38, 'opacity': 0.9
+                                        'weight': w, 'fillOpacity': 0.35, 'opacity': 0.9
                                     }
                                 folium.GeoJson(
                                     gdf_layer, name=lyr_name, show=lyr_show,
-                                    style_function=_make_style(clr),
+                                    style_function=_make_style(clr, weight),
                                     tooltip=folium.GeoJsonTooltip(
-                                        fields=tooltip_fields, aliases=tooltip_aliases,
-                                    ) if tooltip_fields else None
+                                        fields=tip_fields, aliases=tip_aliases,
+                                        localize=False
+                                    ) if tip_fields else None
                                 ).add_to(m_map)
                             else:
-                                def _make_cat_style(cmap, fallback, col):
+                                def _make_cat_style(cmap, fallback, col, w):
                                     def _s(feature):
                                         nm = feature['properties'].get(col, '') if col else ''
                                         c  = cmap.get(nm, fallback)
                                         return {'color': c, 'fillColor': c,
-                                                'weight': 2, 'fillOpacity': 0.42, 'opacity': 0.9}
+                                                'weight': w, 'fillOpacity': 0.42, 'opacity': 0.9}
                                     return _s
                                 folium.GeoJson(
                                     gdf_layer, name=lyr_name, show=lyr_show,
-                                    style_function=_make_cat_style(cmap_cat, clr, cat_col),
+                                    style_function=_make_cat_style(cmap_cat, clr, cat_col, weight),
                                     tooltip=folium.GeoJsonTooltip(
-                                        fields=tooltip_fields, aliases=tooltip_aliases,
-                                    ) if tooltip_fields else None
+                                        fields=tip_fields, aliases=tip_aliases,
+                                        localize=False
+                                    ) if tip_fields else None
                                 ).add_to(m_map)
+
                     except Exception as layer_err:
                         st.warning("Layer '" + layer['name'] + "' gagal dimuat: " + str(layer_err))
 
@@ -2679,58 +2694,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 key=f"btn_goto_data_srs_{hash(_sel_nm)}",
                                 use_container_width=True
                             ):
-                                if st.session_state.get("show_full_data_srs") == _sel_nm:
-                                    st.session_state["show_full_data_srs"] = None
-                                else:
-                                    st.session_state["show_full_data_srs"] = _sel_nm
-
-                            # Tampilkan tabel penuh inline jika tombol ditekan
-                            if st.session_state.get("show_full_data_srs") == _sel_nm:
-                                _df_full = df[
-                                    df[C_SRS].astype(str).str.contains(_sel_nm, case=False, na=False)
-                                ].copy()
-                                _df_full[C_PAGU] = _df_full[C_PAGU].apply(fmt_rp_full)
-                                st.markdown(
-                                    f"<div style='margin:10px 0 5px 0;font-size:0.78rem;"
-                                    f"font-weight:700;color:#0b3327;'>"
-                                    f"Semua data kegiatan di <span style='color:#27ae60;'>"
-                                    f"{_sel_nm}</span> — {len(_df_full):,} baris</div>",
-                                    unsafe_allow_html=True
-                                )
-                                _th_f = "".join(
-                                    f"<th style='position:sticky;top:0;background:#0b3327;"
-                                    f"color:#fff;font-size:0.68rem;padding:6px 10px;"
-                                    f"text-align:left;white-space:nowrap;'>{c}</th>"
-                                    for c in _df_full.columns
-                                )
-                                _tr_f = ""
-                                for _ri, _row in _df_full.iterrows():
-                                    _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
-                                    _tds = "".join(
-                                        f"<td style='padding:5px 10px;font-size:0.68rem;"
-                                        f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
-                                        f"word-break:break-word;max-width:200px;'>"
-                                        f"{str(_row[c])}</td>"
-                                        for c in _df_full.columns
-                                    )
-                                    _tr_f += f"<tr style='background:{_bg};'>{_tds}</tr>"
-                                st.markdown(
-                                    f"<div style='overflow:auto;max-height:500px;"
-                                    f"border-radius:8px;border:1px solid #dce8e2;'>"
-                                    f"<table style='border-collapse:collapse;width:100%;'>"
-                                    f"<thead><tr>{_th_f}</tr></thead>"
-                                    f"<tbody>{_tr_f}</tbody></table></div>",
-                                    unsafe_allow_html=True
-                                )
-                                # Tombol unduh CSV
-                                _csv = _df_full.to_csv(index=False).encode('utf-8')
-                                st.download_button(
-                                    f"⬇️ Unduh CSV — {_sel_nm}",
-                                    data=_csv,
-                                    file_name=f"data_{_sel_nm.replace(' ','_')}.csv",
-                                    mime="text/csv",
-                                    key=f"dl_srs_{hash(_sel_nm)}"
-                                )
+                                st.session_state["data_search_prefill"] = _sel_nm
+                                st.rerun()
                         else:
                             st.info(f"Tidak ada kegiatan yang tercatat di {_sel_nm}.")
 
@@ -2985,55 +2950,9 @@ document.addEventListener('DOMContentLoaded', function() {
                     unsafe_allow_html=True
                 )
                 if st.button("Lihat Semua di Data Lengkap →", key="btn_goto_data_pend", use_container_width=True):
-                    if st.session_state.get("show_full_data_pend") == kw_p:
-                        st.session_state["show_full_data_pend"] = None
-                    else:
-                        st.session_state["show_full_data_pend"] = kw_p
-
-                # Tampilkan tabel penuh inline
-                if st.session_state.get("show_full_data_pend") == kw_p:
-                    _df_pend_full = df_pend_filtered.copy()
-                    _df_pend_full[C_PAGU] = _df_pend_full[C_PAGU].apply(fmt_rp_full)
-                    st.markdown(
-                        f"<div style='margin:10px 0 5px 0;font-size:0.78rem;"
-                        f"font-weight:700;color:#0b3327;'>Semua data untuk kata kunci "
-                        f"<span style='color:#27ae60;'>{kw_p}</span> "
-                        f"— {len(_df_pend_full):,} baris</div>",
-                        unsafe_allow_html=True
-                    )
-                    _th_pf = "".join(
-                        f"<th style='position:sticky;top:0;background:#0b3327;"
-                        f"color:#fff;font-size:0.68rem;padding:6px 10px;"
-                        f"text-align:left;white-space:nowrap;'>{c}</th>"
-                        for c in _df_pend_full.columns
-                    )
-                    _tr_pf = ""
-                    for _ri, _row in _df_pend_full.iterrows():
-                        _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
-                        _tds = "".join(
-                            f"<td style='padding:5px 10px;font-size:0.68rem;"
-                            f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
-                            f"word-break:break-word;max-width:200px;'>"
-                            f"{str(_row[c])}</td>"
-                            for c in _df_pend_full.columns
-                        )
-                        _tr_pf += f"<tr style='background:{_bg};'>{_tds}</tr>"
-                    st.markdown(
-                        f"<div style='overflow:auto;max-height:500px;"
-                        f"border-radius:8px;border:1px solid #dce8e2;'>"
-                        f"<table style='border-collapse:collapse;width:100%;'>"
-                        f"<thead><tr>{_th_pf}</tr></thead>"
-                        f"<tbody>{_tr_pf}</tbody></table></div>",
-                        unsafe_allow_html=True
-                    )
-                    _csv_pf = _df_pend_full.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        f"⬇️ Unduh CSV — {kw_p}",
-                        data=_csv_pf,
-                        file_name=f"data_{kw_p.replace(' ','_')}.csv",
-                        mime="text/csv",
-                        key="dl_pend_full"
-                    )
+                    st.session_state["data_search_prefill"] = kw_p
+                    st.session_state["active_tab"] = 2  # index tab Data Lengkap
+                    st.rerun()
 
             st.markdown("<hr style='margin:14px 0;'>", unsafe_allow_html=True)
             st.markdown(

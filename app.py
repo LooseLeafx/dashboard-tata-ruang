@@ -1438,7 +1438,7 @@ try:
             "<div style='margin-top:4px;margin-bottom:2px;"
             "font-size:1rem;font-weight:800;color:#fff;'>Taru-Istimewa</div>"
             "<div style='font-size:0.6rem;color:rgba(255,255,255,0.4);'>"
-            "Data Tata Ruang · DIY</div>",
+            "Data Keistimewaan Tata Ruang</div>",
             unsafe_allow_html=True
         )
         st.markdown(
@@ -2319,15 +2319,80 @@ try:
                                     '#252525': 'black',  '#525252': 'darkgray',
                                 }
                                 f_color = folium_color_map.get(pin_clr.lower(), 'red')
-                                # Buat popup & tooltip
-                                popup_html = "<br>".join(
-                                    f"<b>{c}:</b> {row.get(c,'')}" for c in tooltip_fields
-                                ) if tooltip_fields else lyr_name
+
+                                # Field bawaan KML yang perlu disembunyikan
+                                KML_SKIP_FIELDS = {
+                                    'timestamp', 'begin', 'end', 'altitudemode',
+                                    'tessellate', 'extrude', 'visibility',
+                                    'draworder', 'icon', 'description', 'styleurl',
+                                    'snippet', 'lookat', 'camera', 'address',
+                                    'phoneNumber', 'id', 'fid'
+                                }
+
+                                # Filter: hanya field yang ada isinya & bukan field bawaan KML
+                                def _clean_fields(row, all_fields):
+                                    result = []
+                                    for c in all_fields:
+                                        if c.lower() in KML_SKIP_FIELDS:
+                                            continue
+                                        val = str(row.get(c, '')).strip()
+                                        if val and val.lower() not in ('none', 'nan', '', '-1', 'null'):
+                                            result.append(c)
+                                    return result
+
+                                clean_fields = _clean_fields(row, attr_cols)
+
+                                # Deteksi kolom foto dari field yang sudah dibersihkan
+                                foto_col = None
+                                for fc in clean_fields:
+                                    val = str(row.get(fc, ''))
+                                    if any(kw in val.lower() for kw in
+                                           ['http', 'drive.google', '.jpg', '.jpeg',
+                                            '.png', 'foto', 'photo', 'gambar', 'image']):
+                                        foto_col = fc
+                                        break
+
+                                # Buat popup HTML dengan foto jika ada
+                                def _build_popup(row, fields, foto_col, lyr_name):
+                                    lines = []
+                                    foto_html = ""
+                                    for c in fields:
+                                        val = str(row.get(c, '')).strip()
+                                        if not val or val.lower() in ('none', 'nan'):
+                                            continue
+                                        if c == foto_col and val.startswith('http'):
+                                            img_url = val
+                                            if 'drive.google.com/file/d/' in val:
+                                                file_id = val.split('/file/d/')[1].split('/')[0]
+                                                img_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
+                                            elif 'drive.google.com/open?id=' in val:
+                                                file_id = val.split('id=')[1].split('&')[0]
+                                                img_url = f"https://drive.google.com/thumbnail?id={file_id}&sz=w400"
+                                            foto_html = (
+                                                f"<div style='margin-bottom:8px;'>"
+                                                f"<img src='{img_url}' style='width:100%;"
+                                                f"max-width:280px;border-radius:6px;"
+                                                f"border:1px solid #ddd;' "
+                                                f"onerror=\"this.style.display='none';\"/></div>"
+                                            )
+                                        else:
+                                            lines.append(
+                                                f"<div style='margin:2px 0;'>"
+                                                f"<span style='color:#7a9a8a;font-size:0.72rem;'>{c}:</span> "
+                                                f"<span style='color:#1a3a2a;font-size:0.75rem;"
+                                                f"font-weight:500;'>{val}</span></div>"
+                                            )
+                                    body = "".join(lines) if lines else lyr_name
+                                    return foto_html + body
+
+                                popup_html = _build_popup(row, clean_fields, foto_col, lyr_name)
+                                # Tooltip: gunakan kolom Name atau field pertama yang bersih
+                                tooltip_val = str(row.get('Name', row.get(clean_fields[0], lyr_name) if clean_fields else lyr_name))
                                 for pt in pts:
                                     folium.Marker(
                                         location=[pt.y, pt.x],
-                                        popup=folium.Popup(popup_html, max_width=280),
-                                        tooltip=str(row.get(tooltip_fields[0], lyr_name)) if tooltip_fields else lyr_name,
+                                        popup=folium.Popup(popup_html, max_width=300),
+                                        tooltip=tooltip_val,
                                         icon=folium.Icon(color=f_color, icon='circle', prefix='fa')
                                     ).add_to(cluster)
                         else:
@@ -2614,8 +2679,58 @@ document.addEventListener('DOMContentLoaded', function() {
                                 key=f"btn_goto_data_srs_{hash(_sel_nm)}",
                                 use_container_width=True
                             ):
-                                st.session_state["data_search_prefill"] = _sel_nm
-                                st.rerun()
+                                if st.session_state.get("show_full_data_srs") == _sel_nm:
+                                    st.session_state["show_full_data_srs"] = None
+                                else:
+                                    st.session_state["show_full_data_srs"] = _sel_nm
+
+                            # Tampilkan tabel penuh inline jika tombol ditekan
+                            if st.session_state.get("show_full_data_srs") == _sel_nm:
+                                _df_full = df[
+                                    df[C_SRS].astype(str).str.contains(_sel_nm, case=False, na=False)
+                                ].copy()
+                                _df_full[C_PAGU] = _df_full[C_PAGU].apply(fmt_rp_full)
+                                st.markdown(
+                                    f"<div style='margin:10px 0 5px 0;font-size:0.78rem;"
+                                    f"font-weight:700;color:#0b3327;'>"
+                                    f"Semua data kegiatan di <span style='color:#27ae60;'>"
+                                    f"{_sel_nm}</span> — {len(_df_full):,} baris</div>",
+                                    unsafe_allow_html=True
+                                )
+                                _th_f = "".join(
+                                    f"<th style='position:sticky;top:0;background:#0b3327;"
+                                    f"color:#fff;font-size:0.68rem;padding:6px 10px;"
+                                    f"text-align:left;white-space:nowrap;'>{c}</th>"
+                                    for c in _df_full.columns
+                                )
+                                _tr_f = ""
+                                for _ri, _row in _df_full.iterrows():
+                                    _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
+                                    _tds = "".join(
+                                        f"<td style='padding:5px 10px;font-size:0.68rem;"
+                                        f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
+                                        f"word-break:break-word;max-width:200px;'>"
+                                        f"{str(_row[c])}</td>"
+                                        for c in _df_full.columns
+                                    )
+                                    _tr_f += f"<tr style='background:{_bg};'>{_tds}</tr>"
+                                st.markdown(
+                                    f"<div style='overflow:auto;max-height:500px;"
+                                    f"border-radius:8px;border:1px solid #dce8e2;'>"
+                                    f"<table style='border-collapse:collapse;width:100%;'>"
+                                    f"<thead><tr>{_th_f}</tr></thead>"
+                                    f"<tbody>{_tr_f}</tbody></table></div>",
+                                    unsafe_allow_html=True
+                                )
+                                # Tombol unduh CSV
+                                _csv = _df_full.to_csv(index=False).encode('utf-8')
+                                st.download_button(
+                                    f"⬇️ Unduh CSV — {_sel_nm}",
+                                    data=_csv,
+                                    file_name=f"data_{_sel_nm.replace(' ','_')}.csv",
+                                    mime="text/csv",
+                                    key=f"dl_srs_{hash(_sel_nm)}"
+                                )
                         else:
                             st.info(f"Tidak ada kegiatan yang tercatat di {_sel_nm}.")
 
@@ -2870,9 +2985,55 @@ document.addEventListener('DOMContentLoaded', function() {
                     unsafe_allow_html=True
                 )
                 if st.button("Lihat Semua di Data Lengkap →", key="btn_goto_data_pend", use_container_width=True):
-                    st.session_state["data_search_prefill"] = kw_p
-                    st.session_state["active_tab"] = 2  # index tab Data Lengkap
-                    st.rerun()
+                    if st.session_state.get("show_full_data_pend") == kw_p:
+                        st.session_state["show_full_data_pend"] = None
+                    else:
+                        st.session_state["show_full_data_pend"] = kw_p
+
+                # Tampilkan tabel penuh inline
+                if st.session_state.get("show_full_data_pend") == kw_p:
+                    _df_pend_full = df_pend_filtered.copy()
+                    _df_pend_full[C_PAGU] = _df_pend_full[C_PAGU].apply(fmt_rp_full)
+                    st.markdown(
+                        f"<div style='margin:10px 0 5px 0;font-size:0.78rem;"
+                        f"font-weight:700;color:#0b3327;'>Semua data untuk kata kunci "
+                        f"<span style='color:#27ae60;'>{kw_p}</span> "
+                        f"— {len(_df_pend_full):,} baris</div>",
+                        unsafe_allow_html=True
+                    )
+                    _th_pf = "".join(
+                        f"<th style='position:sticky;top:0;background:#0b3327;"
+                        f"color:#fff;font-size:0.68rem;padding:6px 10px;"
+                        f"text-align:left;white-space:nowrap;'>{c}</th>"
+                        for c in _df_pend_full.columns
+                    )
+                    _tr_pf = ""
+                    for _ri, _row in _df_pend_full.iterrows():
+                        _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
+                        _tds = "".join(
+                            f"<td style='padding:5px 10px;font-size:0.68rem;"
+                            f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
+                            f"word-break:break-word;max-width:200px;'>"
+                            f"{str(_row[c])}</td>"
+                            for c in _df_pend_full.columns
+                        )
+                        _tr_pf += f"<tr style='background:{_bg};'>{_tds}</tr>"
+                    st.markdown(
+                        f"<div style='overflow:auto;max-height:500px;"
+                        f"border-radius:8px;border:1px solid #dce8e2;'>"
+                        f"<table style='border-collapse:collapse;width:100%;'>"
+                        f"<thead><tr>{_th_pf}</tr></thead>"
+                        f"<tbody>{_tr_pf}</tbody></table></div>",
+                        unsafe_allow_html=True
+                    )
+                    _csv_pf = _df_pend_full.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        f"⬇️ Unduh CSV — {kw_p}",
+                        data=_csv_pf,
+                        file_name=f"data_{kw_p.replace(' ','_')}.csv",
+                        mime="text/csv",
+                        key="dl_pend_full"
+                    )
 
             st.markdown("<hr style='margin:14px 0;'>", unsafe_allow_html=True)
             st.markdown(

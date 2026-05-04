@@ -1496,7 +1496,7 @@ try:
             "<div style='margin-top:4px;margin-bottom:2px;"
             "font-size:1rem;font-weight:800;color:#fff;'>Taru-Istimewa</div>"
             "<div style='font-size:0.6rem;color:rgba(255,255,255,0.4);'>"
-            "Data Tata Ruang · DIY</div>",
+            "Data Urusan Kesistimewaan Tata Ruang </div>",
             unsafe_allow_html=True
         )
         st.markdown(
@@ -2244,60 +2244,105 @@ try:
                         choropleth._children[key].render = lambda **kwargs: ""
                         break
 
-                # Toggle legend hide/unhide
-                _leg_col1, _leg_col2 = st.columns([5,1])
-                with _leg_col2:
-                    if st.button(
-                        "🔲 Sembunyikan Legenda" if not st.session_state.get("hide_legend") else "🔳 Tampilkan Legenda",
-                        key="btn_toggle_legend",
-                        use_container_width=True
-                    ):
-                        st.session_state["hide_legend"] = not st.session_state.get("hide_legend", False)
-                        st.rerun()
 
-                # Legenda kustom 5 kategori
-                if not st.session_state.get("hide_legend", False):
-                    BREAKPOINTS = [0, 6_500_000_000, 100_000_000_000,
-                                   500_000_000_000, 1_000_000_000_000]
-                    LEGEND_LABELS = ["Sangat Rendah","Rendah","Sedang","Tinggi","Sangat Tinggi"]
-                    YL_GN_COLORS  = ["#ffffcc","#c2e699","#78c679","#31a354","#006837"]
+                # Legenda kustom 5 kategori — toggle di dalam peta
+                BREAKPOINTS = [0, 6_500_000_000, 100_000_000_000,
+                               500_000_000_000, 1_000_000_000_000]
+                LEGEND_LABELS = ["Sangat Rendah","Rendah","Sedang","Tinggi","Sangat Tinggi"]
+                YL_GN_COLORS  = ["#ffffcc","#c2e699","#78c679","#31a354","#006837"]
 
-                    def fmt_miliar(v):
-                        if v == 0: return "Rp 0"
-                        elif v >= 1_000_000_000_000: return "Rp " + str(round(v/1_000_000_000_000,1)) + " T"
-                        elif v >= 1_000_000_000:     return "Rp " + str(round(v/1_000_000_000,1)) + " M"
-                        elif v >= 1_000_000:         return "Rp " + str(int(v/1_000_000)) + " jt"
-                        else:                        return fmt_rp_full(v)
+                def fmt_miliar(v):
+                    if v == 0: return "Rp 0"
+                    elif v >= 1_000_000_000_000: return "Rp " + str(round(v/1_000_000_000_000,1)) + " T"
+                    elif v >= 1_000_000_000:     return "Rp " + str(round(v/1_000_000_000,1)) + " M"
+                    elif v >= 1_000_000:         return "Rp " + str(int(v/1_000_000)) + " jt"
+                    else:                        return fmt_rp_full(v)
 
-                    RANGE_LABELS = [
-                        "0 – " + fmt_miliar(BREAKPOINTS[1]),
-                        fmt_miliar(BREAKPOINTS[1]) + " – " + fmt_miliar(BREAKPOINTS[2]),
-                        fmt_miliar(BREAKPOINTS[2]) + " – " + fmt_miliar(BREAKPOINTS[3]),
-                        fmt_miliar(BREAKPOINTS[3]) + " – " + fmt_miliar(BREAKPOINTS[4]),
-                        "> " + fmt_miliar(BREAKPOINTS[4]),
-                    ]
-                    legend_rows = ""
-                    for _i, (_c, _l, _r) in enumerate(
-                            zip(YL_GN_COLORS, LEGEND_LABELS, RANGE_LABELS)):
-                        legend_rows += (
-                            "<div style='display:flex;align-items:center;gap:8px;"
-                            "margin-top:" + ("5" if _i > 0 else "0") + "px;'>"
-                            "<div style='background:" + _c + ";width:22px;height:13px;"
-                            "border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
-                            "<div><div style='color:#222;font-size:0.7rem;font-weight:600;"
-                            "line-height:1.2;'>" + _l + "</div>"
-                            "<div style='color:#777;font-size:0.62rem;'>" + _r + "</div>"
-                            "</div></div>"
-                        )
-                    legend_html = (
-                        "<div style='position:fixed;bottom:30px;right:30px;z-index:1000;"
-                        "background:white;border-radius:10px;padding:12px 16px;"
-                        "box-shadow:0 2px 10px rgba(0,0,0,0.18);min-width:220px;'>"
-                        "<div style='font-weight:700;color:#0b3327;margin-bottom:8px;"
-                        "font-size:0.75rem;'>Total Pagu Anggaran</div>"
-                        + legend_rows + "</div>"
+                RANGE_LABELS = [
+                    "0 – " + fmt_miliar(BREAKPOINTS[1]),
+                    fmt_miliar(BREAKPOINTS[1]) + " – " + fmt_miliar(BREAKPOINTS[2]),
+                    fmt_miliar(BREAKPOINTS[2]) + " – " + fmt_miliar(BREAKPOINTS[3]),
+                    fmt_miliar(BREAKPOINTS[3]) + " – " + fmt_miliar(BREAKPOINTS[4]),
+                    "> " + fmt_miliar(BREAKPOINTS[4]),
+                ]
+                legend_rows = ""
+                for _i, (_c, _l, _r) in enumerate(
+                        zip(YL_GN_COLORS, LEGEND_LABELS, RANGE_LABELS)):
+                    legend_rows += (
+                        "<div style='display:flex;align-items:center;gap:8px;"
+                        "margin-top:" + ("5" if _i > 0 else "0") + "px;'>"
+                        "<div style='background:" + _c + ";width:22px;height:13px;"
+                        "border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                        "<div><div style='color:#222;font-size:0.7rem;font-weight:600;"
+                        "line-height:1.2;'>" + _l + "</div>"
+                        "<div style='color:#777;font-size:0.62rem;'>" + _r + "</div>"
+                        "</div></div>"
                     )
-                    m_map.get_root().html.add_child(folium.Element(legend_html))
+                legend_html = """
+<style>
+.taru-legend-ctrl {
+    position: absolute;
+    bottom: 30px;
+    right: 10px;
+    z-index: 1000;
+    font-family: Arial, sans-serif;
+}
+.taru-legend-toggle {
+    background: white;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #0b3327;
+    display: block;
+    text-align: center;
+    user-select: none;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+    white-space: nowrap;
+}
+.taru-legend-toggle:hover {
+    background: #f4f4f4;
+}
+.taru-legend-panel {
+    background: white;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-top: 4px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+    min-width: 200px;
+    display: none;
+}
+.taru-legend-panel.open {
+    display: block;
+}
+.taru-legend-title {
+    font-weight: 700;
+    color: #0b3327;
+    font-size: 0.75rem;
+    margin-bottom: 8px;
+}
+</style>
+<div class="taru-legend-ctrl">
+    <div class="taru-legend-panel" id="taruLegendPanel">
+        <div class="taru-legend-title">Total Pagu Anggaran</div>
+        """ + legend_rows + """
+    </div>
+    <div class="taru-legend-toggle" id="taruLegendToggle" onclick="
+        var p = document.getElementById('taruLegendPanel');
+        var t = document.getElementById('taruLegendToggle');
+        if (p.classList.contains('open')) {
+            p.classList.remove('open');
+            t.textContent = '▲ Legenda';
+        } else {
+            p.classList.add('open');
+            t.textContent = '▼ Legenda';
+        }
+    ">▲ Legenda</div>
+</div>"""
+                m_map.get_root().html.add_child(folium.Element(legend_html))
 
                 # Highlight SRS yang dipilih
                 if selected_srs:
@@ -2450,6 +2495,8 @@ try:
 
                         if is_point:
                             # ── Point: MarkerCluster dengan popup bersih ──
+                            # disableClusteringAtZoom=16: zoom ≥16 marker
+                            # langsung muncul tepat di koordinat aslinya
                             folium_color_map = {
                                 '#e41a1c':'red','#d73027':'red','#377eb8':'blue',
                                 '#2166ac':'blue','#4daf4a':'green','#1a9850':'green',
@@ -2457,7 +2504,15 @@ try:
                                 '#a65628':'beige','#f781bf':'pink','#252525':'black',
                                 '#525252':'darkgray','#737373':'gray',
                             }
-                            cluster = MarkerCluster(name=lyr_name, show=lyr_show).add_to(m_map)
+                            cluster = MarkerCluster(
+                                name=lyr_name,
+                                show=lyr_show,
+                                options={
+                                    'disableClusteringAtZoom': 16,
+                                    'spiderfyOnMaxZoom': False,
+                                    'maxClusterRadius': 60,
+                                }
+                            ).add_to(m_map)
                             for _, row in gdf_layer.iterrows():
                                 geom = row.geometry
                                 if geom is None:

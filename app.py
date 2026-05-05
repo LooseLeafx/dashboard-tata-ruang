@@ -1551,6 +1551,15 @@ try:
                 if C_SRS else []
             )
 
+            # --- 1. TAMBAHKAN CHECKBOX EKSKLUSIF DI SINI ---
+            is_global_eksklusif = False
+            if C_SRS and sel_srs and len(sel_srs) > 0:
+                is_global_eksklusif = st.checkbox(
+                    "Eksklusif SRS Pilihan", 
+                    help="Sembunyikan kegiatan multi-SRS dari seluruh grafik dan data"
+                )
+            # -----------------------------------------------
+
         btn_apply = st.button("Filter")
 
         st.markdown(
@@ -1629,9 +1638,17 @@ try:
         if sel_detail  and C_DETAIL:  df_f = df_f[df_f[C_DETAIL].isin(sel_detail)]
         if sel_jenis   and C_JENIS:   df_f = df_f[df_f[C_JENIS].isin(sel_jenis)]
         if sel_srs and C_SRS:
-            df_f = df_f[df_f[C_SRS].apply(
-                lambda v: bool(set(kategorisasi_srs(v)) & set(sel_srs))
-            )]
+            if is_global_eksklusif:
+                # Jika dicentang eksklusif, buang yang multi-SRS
+                df_f = df_f[df_f[C_SRS].apply(
+                    lambda v: set(kategorisasi_srs(v)) == set(sel_srs)
+                )]
+            else:
+                # Jika tidak dicentang, ambil semua yang memuat SRS tersebut
+                df_f = df_f[df_f[C_SRS].apply(
+                    lambda v: bool(set(kategorisasi_srs(v)) & set(sel_srs))
+                )]
+
         st.session_state.df_active = df_f
         for key in list(st.session_state.keys()):
             if key.endswith("_page"):
@@ -2561,17 +2578,6 @@ try:
                         except Exception:
                             pass
 
-                # ── Basemap toggle (minimal, di atas peta) ──
-                _bm_now = st.session_state.get("basemap_choice", "street")
-                _bm_cols = st.columns([6, 1])
-                with _bm_cols[1]:
-                    _bm_icon = "🛰️" if _bm_now == "street" else "🏙️"
-                    _bm_lbl  = f"{_bm_icon} {'Sat' if _bm_now == 'street' else 'Map'}"
-                    if st.button(_bm_lbl, key="bm_toggle", use_container_width=True,
-                                 help="Ganti basemap Street ↔ Satelit"):
-                        st.session_state["basemap_choice"] = "sat" if _bm_now == "street" else "street"
-                        st.rerun()
-
                 # ── Input pencarian lokasi ──
                 _sc1, _sc2 = st.columns([5, 1])
                 with _sc1:
@@ -2588,10 +2594,29 @@ try:
                 m_map = folium.Map(
                     location=map_location,
                     zoom_start=map_zoom,
-                    tiles=None,
+                    tiles=None, # Kita atur tile-nya secara manual di bawah
                     max_zoom=22,
                     control_scale=True
                 )
+
+                # 1. Tambahkan Basemap: Street (Default aktif)
+                folium.TileLayer(
+                    tiles="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    attr="OpenStreetMap contributors",
+                    name="Basemap: Street", 
+                    control=True, 
+                    show=True
+                ).add_to(m_map)
+                
+                # 2. Tambahkan Basemap: Satelit (Opsional)
+                folium.TileLayer(
+                    tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                    attr="Esri, Maxar, Earthstar Geographics",
+                    name="Basemap: Satelit", 
+                    control=True, 
+                    show=False
+                ).add_to(m_map)
+
                 if _bm == "sat":
                     folium.TileLayer(
                         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
@@ -2951,45 +2976,6 @@ try:
                 # LayerControl – collapsed (ikon tumpuk, buka saat diklik)
                 folium.LayerControl(collapsed=True, position='topright').add_to(m_map)
 
-                # Basemap toggle — di dalam peta, di samping layer control
-                _bm_now = st.session_state.get("basemap_choice", "street")
-                _bm_next = "sat" if _bm_now == "street" else "street"
-                _bm_icon = "🛰️" if _bm_now == "street" else "🏙️"
-                _bm_title = "Satelit" if _bm_now == "street" else "Street"
-                _basemap_ctrl_html = f"""
-<style>
-.taru-bm-ctrl {{
-    position: absolute;
-    top: 80px;
-    right: 10px;
-    z-index: 1000;
-}}
-.taru-bm-btn {{
-    background: white;
-    border: 2px solid rgba(0,0,0,0.2);
-    border-radius: 6px;
-    padding: 5px 10px;
-    cursor: pointer;
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #0b3327;
-    display: block;
-    text-align: center;
-    user-select: none;
-    box-shadow: 0 1px 5px rgba(0,0,0,0.15);
-    white-space: nowrap;
-    text-decoration: none;
-}}
-.taru-bm-btn:hover {{ background: #f4f4f4; }}
-</style>
-<div class="taru-bm-ctrl">
-    <a class="taru-bm-btn" id="taruBmBtn"
-       href="?bm={_bm_next}" target="_self"
-       onclick="window.parent.postMessage({{type:'streamlit:setComponentValue',value:'{_bm_next}'}},
-       '*'); return false;"
-       title="Ganti ke {_bm_title}">{_bm_icon} {_bm_title}</a>
-</div>"""
-                m_map.get_root().html.add_child(folium.Element(_basemap_ctrl_html))
                 hide_internal = folium.Element("""
 <script>
 document.addEventListener('DOMContentLoaded', function() {

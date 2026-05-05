@@ -3280,14 +3280,6 @@ document.addEventListener('DOMContentLoaded', function() {
         st.markdown("<div class='card'>", unsafe_allow_html=True)
 
         hdr1, hdr2 = st.columns([3, 1])
-        with hdr1:
-            st.markdown(
-                f"<div class='card-title' style='margin-bottom:8px;'>"
-                f"📄 Data Kegiatan Tata Ruang &nbsp;"
-                f"<span style='font-size:0.72rem;color:#7a9a8a;font-weight:500;'>"
-                f"({len(df):,} baris)</span></div>",
-                unsafe_allow_html=True
-            )
         with hdr2:
             import io as _io3
             _buf3 = _io3.BytesIO()
@@ -3300,7 +3292,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 use_container_width=True
             )
 
-       _prefill_val = st.session_state.pop("data_search_prefill", "")
+        _prefill_val = st.session_state.pop("data_search_prefill", "")
         
         # ── KOTAK PENCARIAN & FILTER EKSKLUSIF ──
         c_search, c_eks = st.columns([4, 1])

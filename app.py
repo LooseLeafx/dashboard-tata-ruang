@@ -3294,44 +3294,44 @@ document.addEventListener('DOMContentLoaded', function() {
 
         _prefill_val = st.session_state.pop("data_search_prefill", "")
                 
-                # ── KOTAK PENCARIAN & FILTER EKSKLUSIF ──
-                c_search, c_eks = st.columns([4, 1])
-                with c_search:
-                    search_q = st.text_input(
-                        "Cari",
-                        placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
-                        key="data_search",
-                        label_visibility="collapsed",
-                        value=_prefill_val
-                    )
+        # ── KOTAK PENCARIAN & FILTER EKSKLUSIF ──
+        c_search, c_eks = st.columns([4, 1])
+        with c_search:
+            search_q = st.text_input(
+                "Cari",
+                placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
+                key="data_search",
+                label_visibility="collapsed",
+                value=_prefill_val
+            )
                     
-                with c_eks:
-                    is_eksklusif = False
-                    # Checkbox hanya muncul jika ada SRS yang dipilih di sidebar
-                    if C_SRS and sel_srs and len(sel_srs) > 0:
-                        st.markdown("<div style='padding-top: 6px;'>", unsafe_allow_html=True)
-                        is_eksklusif = st.checkbox(
-                            "Eksklusif SRS Pilihan", 
-                            help="Sembunyikan kegiatan multi-SRS yang tidak relevan dengan pilihan di sidebar"
-                        )
-                        st.markdown("</div>", unsafe_allow_html=True)
+        with c_eks:
+            is_eksklusif = False
+            # Checkbox hanya muncul jika ada SRS yang dipilih di sidebar
+            if C_SRS and sel_srs and len(sel_srs) > 0:
+                st.markdown("<div style='padding-top: 6px;'>", unsafe_allow_html=True)
+                is_eksklusif = st.checkbox(
+                    "Eksklusif SRS Pilihan", 
+                    help="Sembunyikan kegiatan multi-SRS yang tidak relevan dengan pilihan di sidebar"
+                )
+                st.markdown("</div>", unsafe_allow_html=True)
 
-                df_show = df.copy()
+        df_show = df.copy()
                 
-                # 1. Terapkan Filter Eksklusif SRS (berdasarkan pilihan di Sidebar)
-                if C_SRS and is_eksklusif and sel_srs and len(sel_srs) > 0:
-                    df_show = df_show[df_show[C_SRS].apply(
-                        # Memastikan SRS di data SAMA PERSIS dengan kombinasi SRS di sidebar
-                        lambda v: set(kategorisasi_srs(v)) == set(sel_srs)
-                    )]
+        # 1. Terapkan Filter Eksklusif SRS (berdasarkan pilihan di Sidebar)
+        if C_SRS and is_eksklusif and sel_srs and len(sel_srs) > 0:
+            df_show = df_show[df_show[C_SRS].apply(
+                # Memastikan SRS di data SAMA PERSIS dengan kombinasi SRS di sidebar
+                lambda v: set(kategorisasi_srs(v)) == set(sel_srs)
+            )]
 
-                # 2. Terapkan Pencarian Teks
-                if search_q:
-                    mask = df_show.apply(
-                        lambda col: col.astype(str).str.contains(
-                            search_q, case=False, na=False)
-                    ).any(axis=1)
-                    df_show = df_show[mask]
+        # 2. Terapkan Pencarian Teks
+        if search_q:
+            mask = df_show.apply(
+                lambda col: col.astype(str).str.contains(
+                    search_q, case=False, na=False)
+            ).any(axis=1)
+            df_show = df_show[mask]
 
         st.markdown(
             f"<p style='font-size:0.69rem;color:#7a9a8a;margin:4px 0 8px;'>"

@@ -1901,34 +1901,478 @@ try:
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             st.markdown("<div class='card-title'>Tren Pagu Anggaran per Tahun</div>",
                         unsafe_allow_html=True)
+
+            # ── Comparison Mode toggle ──
+            _cmp_on = st.toggle("🔀 Mode Perbandingan", key="comparison_mode",
+                                help="Bandingkan data antar Tahun, SRS, atau OPD dalam satu grafik")
+
             yr = (
                 df.groupby(C_TAHUN)[C_PAGU].sum()
                 .reset_index()
                 .sort_values(C_TAHUN)
             )
-            fig_bar = go.Figure(go.Bar(
-                x=yr[C_TAHUN],
-                y=yr[C_PAGU],
-                marker_color=COLORS[0],
-                text=[fmt_rp_full(v) for v in yr[C_PAGU]],
-                textposition='outside',
-                hovertemplate="<b>%{x}</b><br>%{customdata}<extra></extra>",
-                customdata=[fmt_rp_full(v) for v in yr[C_PAGU]],
-            ))
-            fig_bar.update_layout(
-                height=220,
-                margin=dict(t=30, b=10, l=10, r=10),
-                paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)',
-                xaxis=dict(showgrid=False, tickfont=dict(size=11)),
-                yaxis=dict(showgrid=True, gridcolor='#eef2f0',
-                           showticklabels=False),
-                uniformtext_minsize=8,
-                uniformtext_mode='hide'
-            )
-            st.plotly_chart(fig_bar, use_container_width=True,
-                            config={'displayModeBar': False})
+
+            if _cmp_on:
+                _cmp_by = st.selectbox(
+                    "Bandingkan berdasarkan:",
+                    options=[o for o in ["Tahun Anggaran", "SRS", "OPD"]
+                             if (o != "Tahun Anggaran" or C_TAHUN)
+                             and (o != "SRS" or C_SRS)
+                             and (o != "OPD" or C_OPD)],
+                    key="cmp_by"
+                )
+                _cmp_col_map = {
+                    "Tahun Anggaran": C_TAHUN,
+                    "SRS": C_SRS,
+                    "OPD": C_OPD,
+                }
+                _cmp_col = _cmp_col_map.get(_cmp_by)
+                _cmp_x   = C_TAHUN if _cmp_by != "Tahun Anggaran" else C_SRS or C_OPD
+
+                if _cmp_col and _cmp_x:
+                    _opts = sorted(df[_cmp_col].dropna().unique().tolist())
+                    _sel_cmp = st.multiselect(
+                        f"Pilih {_cmp_by} yang dibandingkan:",
+                        _opts,
+                        default=_opts[:min(3, len(_opts))],
+                        key="cmp_sel"
+                    )
+                    if _sel_cmp:
+                        fig_cmp = go.Figure()
+                        for i, _val in enumerate(_sel_cmp):
+                            _dfc = df[df[_cmp_col] == _val]
+                            _grp = _dfc.groupby(_cmp_x)[C_PAGU].sum().reset_index().sort_values(_cmp_x)
+                            fig_cmp.add_trace(go.Bar(
+                                x=_grp[_cmp_x],
+                                y=_grp[C_PAGU],
+                                name=str(_val),
+                                marker_color=COLORS[i % len(COLORS)],
+                                text=[fmt_rp_full(v) for v in _grp[C_PAGU]],
+                                textposition='outside',
+                                hovertemplate=f"<b>{_val}</b><br>%{{x}}<br>%{{customdata}}<extra></extra>",
+                                customdata=[fmt_rp_full(v) for v in _grp[C_PAGU]],
+                            ))
+                        fig_cmp.update_layout(
+                            barmode='group',
+                            height=280,
+                            margin=dict(t=30, b=10, l=10, r=10),
+                            paper_bgcolor='rgba(0,0,0,0)',
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            xaxis=dict(showgrid=False, tickfont=dict(size=10)),
+                            yaxis=dict(showgrid=True, gridcolor='#eef2f0',
+                                       showticklabels=False),
+                            legend=dict(orientation='h', yanchor='bottom',
+                                        y=1.02, xanchor='left', x=0),
+                        )
+                        st.plotly_chart(fig_cmp, use_container_width=True,
+                                        config={'displayModeBar': False})
+                    else:
+                        st.info("Pilih minimal satu item untuk dibandingkan.")
+                else:
+                    st.info("Kolom yang diperlukan tidak tersedia.")
+            else:
+                fig_bar = go.Figure(go.Bar(
+                    x=yr[C_TAHUN],
+                    y=yr[C_PAGU],
+                    marker_color=COLORS[0],
+                    text=[fmt_rp_full(v) for v in yr[C_PAGU]],
+                    textposition='outside',
+                    hovertemplate="<b>%{x}</b><br>%{customdata}<extra></extra>",
+                    customdata=[fmt_rp_full(v) for v in yr[C_PAGU]],
+                ))
+                fig_bar.update_layout(
+                    height=220,
+                    margin=dict(t=30, b=10, l=10, r=10),
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    xaxis=dict(showgrid=False, tickfont=dict(size=11)),
+                    yaxis=dict(showgrid=True, gridcolor='#eef2f0',
+                               showticklabels=False),
+                    uniformtext_minsize=8,
+                    uniformtext_mode='hide'
+                )
+                st.plotly_chart(fig_bar, use_container_width=True,
+                                config={'displayModeBar': False})
             st.markdown("</div>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════
+        # SMART INSIGHT
+        # ══════════════════════════════════════════════════════════
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<div class='card-title'>💡 Smart Insight</div>",
+                    unsafe_allow_html=True)
+
+        def _hhi(series):
+            """Hitung Herfindahl-Hirschman Index (0-1)."""
+            total = series.sum()
+            if total == 0:
+                return 0
+            shares = series / total
+            return float((shares ** 2).sum())
+
+        def _konsentrasi(hhi):
+            if hhi > 0.25:  return "sangat terkonsentrasi"
+            elif hhi > 0.15: return "cukup terkonsentrasi"
+            elif hhi > 0.10: return "moderat"
+            else:            return "terdistribusi merata"
+
+        def _generate_insights(df, C_OPD, C_PELAYAN, C_FOKUS, C_SRS, C_TAHUN, C_PAGU, C_DAERAH):
+            insights = []
+            total = df[C_PAGU].sum()
+
+            # 1. Insight OPD
+            if C_OPD:
+                opd_grp = df.groupby(C_OPD)[C_PAGU].sum().sort_values(ascending=False)
+                hhi_opd = _hhi(opd_grp)
+                top_opd = opd_grp.index[0] if len(opd_grp) > 0 else "-"
+                top_pct = opd_grp.iloc[0] / total * 100 if total > 0 else 0
+                insights.append({
+                    "icon": "🏛️",
+                    "judul": "Distribusi Anggaran antar OPD",
+                    "teks": (
+                        f"Distribusi anggaran antar OPD bersifat <b>{_konsentrasi(hhi_opd)}</b> "
+                        f"(HHI: {hhi_opd:.3f}). OPD dengan alokasi tertinggi adalah "
+                        f"<b>{top_opd}</b> ({top_pct:.1f}% dari total pagu). "
+                        + ("Perlu evaluasi pemerataan peran antar OPD dalam penganggaran tata ruang."
+                           if hhi_opd > 0.25 else
+                           "Distribusi antar OPD sudah cukup proporsional.")
+                    )
+                })
+
+            # 2. Insight SRS
+            if C_SRS:
+                srs_grp = df.groupby(C_SRS)[C_PAGU].sum().sort_values(ascending=False)
+                hhi_srs = _hhi(srs_grp)
+                top_srs = srs_grp.index[0] if len(srs_grp) > 0 else "-"
+                top_srs_pct = srs_grp.iloc[0] / total * 100 if total > 0 else 0
+                insights.append({
+                    "icon": "🗺️",
+                    "judul": "Distribusi Spasial per SRS",
+                    "teks": (
+                        f"Konsentrasi anggaran per Satuan Ruang Strategis bersifat "
+                        f"<b>{_konsentrasi(hhi_srs)}</b> (HHI: {hhi_srs:.3f}). "
+                        f"SRS dengan pagu tertinggi adalah <b>{top_srs}</b> "
+                        f"({top_srs_pct:.1f}% dari total). "
+                        + (f"Wilayah {top_srs} mendominasi alokasi — pertimbangkan pemerataan ke SRS lain."
+                           if hhi_srs > 0.25 else
+                           "Alokasi spasial antar SRS sudah cukup seimbang.")
+                    )
+                })
+
+            # 3. Insight Pelayanan/Fokus
+            _col_pf = C_PELAYAN or C_FOKUS
+            if _col_pf:
+                pf_grp = df.groupby(_col_pf)[C_PAGU].sum().sort_values(ascending=False)
+                hhi_pf = _hhi(pf_grp)
+                top_pf = pf_grp.index[0] if len(pf_grp) > 0 else "-"
+                insights.append({
+                    "icon": "🎯",
+                    "judul": "Distribusi per Pelayanan/Fokus",
+                    "teks": (
+                        f"Berdasarkan kategori {_col_pf}, distribusi bersifat "
+                        f"<b>{_konsentrasi(hhi_pf)}</b> (HHI: {hhi_pf:.3f}). "
+                        f"Kategori dominan adalah <b>{top_pf}</b>. "
+                        + ("Dominasi satu kategori dapat mengurangi cakupan layanan tata ruang secara menyeluruh."
+                           if hhi_pf > 0.25 else
+                           "Cakupan kategori layanan sudah cukup merata.")
+                    )
+                })
+
+            # 4. Insight Tren
+            if C_TAHUN:
+                yr_grp = df.groupby(C_TAHUN)[C_PAGU].sum().sort_values()
+                if len(yr_grp) >= 2:
+                    thn_min = yr_grp.index[0]
+                    thn_max = yr_grp.index[-1]
+                    delta   = (yr_grp.iloc[-1] - yr_grp.iloc[0]) / yr_grp.iloc[0] * 100 if yr_grp.iloc[0] > 0 else 0
+                    arah    = "meningkat" if delta > 0 else "menurun"
+                    insights.append({
+                        "icon": "📈",
+                        "judul": "Tren Anggaran",
+                        "teks": (
+                            f"Pagu anggaran dari tahun <b>{thn_min}</b> ke <b>{thn_max}</b> "
+                            f"<b>{arah} {abs(delta):.1f}%</b>. "
+                            + ("Tren positif menunjukkan komitmen yang meningkat terhadap program tata ruang."
+                               if delta > 0 else
+                               "Tren menurun perlu dicermati untuk memastikan program tetap berjalan optimal.")
+                        )
+                    })
+
+            # 5. Rata-rata & outlier
+            if total > 0 and len(df) > 0:
+                avg_pagu  = total / len(df)
+                top10_pct = df.nlargest(10, C_PAGU)[C_PAGU].sum() / total * 100
+                insights.append({
+                    "icon": "📊",
+                    "judul": "Distribusi Individual Kegiatan",
+                    "teks": (
+                        f"Rata-rata pagu per kegiatan adalah <b>{fmt_rp_full(avg_pagu)}</b>. "
+                        f"10 kegiatan terbesar menyerap <b>{top10_pct:.1f}%</b> dari total anggaran. "
+                        + ("Konsentrasi tinggi pada kegiatan besar — pertimbangkan distribusi ke kegiatan skala kecil-menengah."
+                           if top10_pct > 50 else
+                           "Distribusi kegiatan sudah cukup merata dari sisi skala.")
+                    )
+                })
+
+            return insights
+
+        with st.spinner("Menganalisis data..."):
+            _insights = _generate_insights(
+                df, C_OPD, C_PELAYAN, C_FOKUS, C_SRS, C_TAHUN, C_PAGU, C_DAERAH
+            )
+
+        for _ins in _insights:
+            st.markdown(
+                f"<div style='background:#f8fdf9;border-left:4px solid #27ae60;"
+                f"border-radius:0 8px 8px 0;padding:12px 16px;margin-bottom:10px;'>"
+                f"<div style='font-size:0.78rem;font-weight:700;color:#0b3327;"
+                f"margin-bottom:4px;'>{_ins['icon']} {_ins['judul']}</div>"
+                f"<div style='font-size:0.74rem;color:#2d5a3d;line-height:1.6;'>"
+                f"{_ins['teks']}</div></div>",
+                unsafe_allow_html=True
+            )
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════
+        # EXPORT PDF REPORT
+        # ══════════════════════════════════════════════════════════
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<div class='card-title'>📄 Export Laporan PDF</div>",
+                    unsafe_allow_html=True)
+
+        _pdf_col1, _pdf_col2 = st.columns([3, 1])
+        with _pdf_col1:
+            st.markdown(
+                "<div style='font-size:0.75rem;color:#7a9a8a;'>"
+                "Generate laporan formal rekapitulasi kegiatan dalam format HTML "
+                "yang siap dikonversi ke PDF (gunakan Ctrl+P → Simpan sebagai PDF di browser)."
+                "</div>",
+                unsafe_allow_html=True
+            )
+        with _pdf_col2:
+            _logo_file = st.file_uploader("Logo Instansi (opsional)",
+                                          type=['png','jpg','jpeg'],
+                                          key="pdf_logo",
+                                          label_visibility="collapsed")
+
+        if st.button("🖨️ Generate Laporan HTML", key="btn_gen_pdf",
+                     use_container_width=True):
+            import io as _io_pdf, base64 as _b64, datetime as _dt
+
+            # Logo
+            _logo_html = ""
+            if _logo_file:
+                _logo_b64 = _b64.b64encode(_logo_file.read()).decode()
+                _logo_ext = _logo_file.name.split('.')[-1]
+                _logo_html = (
+                    f"<img src='data:image/{_logo_ext};base64,{_logo_b64}' "
+                    f"style='height:70px;object-fit:contain;margin-bottom:8px;' />"
+                )
+
+            # Filter aktif
+            _filter_aktif = []
+            if sel_tahun:   _filter_aktif.append(f"Tahun: {', '.join(map(str,sel_tahun))}")
+            if sel_srs:     _filter_aktif.append(f"SRS: {', '.join(sel_srs)}")
+            if sel_opd:     _filter_aktif.append(f"OPD: {', '.join(sel_opd)}")
+            _filter_str = " &nbsp;|&nbsp; ".join(_filter_aktif) if _filter_aktif else "Semua data"
+            _tgl_gen    = _dt.datetime.now().strftime("%d %B %Y %H:%M")
+
+            # Metrik
+            _avg_pagu = df[C_PAGU].mean() if len(df) > 0 else 0
+            _max_srs  = df.groupby(C_SRS)[C_PAGU].sum().idxmax() if C_SRS else "-"
+
+            # Insight utama (3 pertama)
+            _ins_html = ""
+            for _ins in _insights[:3]:
+                _ins_html += (
+                    f"<div style='background:#f0f9f4;border-left:3px solid #27ae60;"
+                    f"padding:8px 12px;margin-bottom:8px;border-radius:0 4px 4px 0;'>"
+                    f"<b>{_ins['icon']} {_ins['judul']}</b><br>"
+                    f"<span style='font-size:0.85em;'>{_ins['teks']}</span></div>"
+                )
+
+            # Top 10 kegiatan
+            _top10 = df.nlargest(10, C_PAGU)
+            _top10_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_PAGU] if c]
+            _top10_disp = _top10[_top10_cols].copy()
+            if C_PAGU in _top10_disp.columns:
+                _top10_disp[C_PAGU] = _top10_disp[C_PAGU].apply(fmt_rp_full)
+            _top10_th = "".join(
+                f"<th style='background:#0b3327;color:#fff;padding:7px 12px;"
+                f"text-align:left;font-size:0.8em;'>{c}</th>"
+                for c in _top10_disp.columns
+            )
+            _top10_tr = ""
+            for _ri2, _row2 in _top10_disp.iterrows():
+                _bg2 = "#ffffff" if _ri2 % 2 == 0 else "#f0f9f4"
+                _top10_tr += (
+                    f"<tr style='background:{_bg2};'>" +
+                    "".join(f"<td style='padding:6px 12px;font-size:0.8em;"
+                            f"border-bottom:1px solid #eee;'>{str(_row2[c])}</td>"
+                            for c in _top10_disp.columns) +
+                    "</tr>"
+                )
+
+            # Distribusi OPD
+            _opd_rows = ""
+            if C_OPD:
+                _opd_g = df.groupby(C_OPD)[C_PAGU].sum().sort_values(ascending=False).head(10)
+                _tot_opd = _opd_g.sum()
+                for _on, _ov in _opd_g.items():
+                    _pct_o = _ov / _tot_opd * 100 if _tot_opd > 0 else 0
+                    _opd_rows += (
+                        f"<tr><td style='padding:5px 10px;font-size:0.8em;"
+                        f"border-bottom:1px solid #eee;'>{_on}</td>"
+                        f"<td style='padding:5px 10px;font-size:0.8em;"
+                        f"border-bottom:1px solid #eee;text-align:right;'>"
+                        f"{fmt_rp_full(_ov)}</td>"
+                        f"<td style='padding:5px 10px;font-size:0.8em;"
+                        f"border-bottom:1px solid #eee;text-align:right;'>"
+                        f"{_pct_o:.1f}%</td></tr>"
+                    )
+
+            _html_report = f"""<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Laporan Rekapitulasi Kegiatan Tata Ruang</title>
+<style>
+  body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a;
+          margin: 0; padding: 0; font-size: 13px; }}
+  .page {{ max-width: 900px; margin: 0 auto; padding: 32px 40px; }}
+  h1 {{ color: #0b3327; font-size: 1.4em; margin: 0 0 4px; }}
+  h2 {{ color: #0b3327; font-size: 1.05em; border-bottom: 2px solid #27ae60;
+        padding-bottom: 4px; margin: 24px 0 12px; }}
+  h3 {{ color: #27ae60; font-size: 0.95em; margin: 16px 0 6px; }}
+  .header {{ background: #0b3327; color: white; padding: 24px 40px;
+             display: flex; align-items: center; gap: 20px; }}
+  .header-text h1 {{ color: white; font-size: 1.2em; }}
+  .header-text p {{ color: #a8d5c2; font-size: 0.8em; margin: 4px 0 0; }}
+  .filter-bar {{ background: #f0f9f4; border: 1px solid #c8e6c9;
+                 padding: 8px 16px; font-size: 0.78em; color: #2d5a3d;
+                 margin: 16px 0; border-radius: 4px; }}
+  .metric-grid {{ display: grid; grid-template-columns: repeat(3,1fr);
+                  gap: 12px; margin: 16px 0; }}
+  .metric-box {{ background: #f8fdf9; border: 1px solid #dce8e2;
+                 border-radius: 8px; padding: 14px 16px; text-align: center; }}
+  .metric-val {{ font-size: 1.15em; font-weight: 800; color: #0b3327; }}
+  .metric-lbl {{ font-size: 0.72em; color: #7a9a8a; margin-top: 4px; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  .footer {{ margin-top: 32px; padding-top: 16px;
+             border-top: 1px solid #eee; font-size: 0.72em;
+             color: #999; text-align: center; }}
+  @media print {{
+    .page {{ padding: 16px 20px; }}
+    .header {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    .metric-box {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+  }}
+</style>
+</head>
+<body>
+<div class="header">
+  {_logo_html}
+  <div class="header-text">
+    <h1>Laporan Rekapitulasi Kegiatan Keistimewaan Tata Ruang</h1>
+    <p>Bidang Perencanaan Tata Ruang &nbsp;·&nbsp; Paniradya Kaistimewan &nbsp;·&nbsp;
+       Digenerate: {_tgl_gen}</p>
+  </div>
+</div>
+
+<div class="page">
+
+<div class="filter-bar">
+  <b>Filter Aktif:</b> {_filter_str}
+</div>
+
+<h2>1. Ringkasan Utama</h2>
+<div class="metric-grid">
+  <div class="metric-box">
+    <div class="metric-val">{total_kegiatan:,}</div>
+    <div class="metric-lbl">Total Kegiatan</div>
+  </div>
+  <div class="metric-box">
+    <div class="metric-val">{fmt_rp_full(total_pagu)}</div>
+    <div class="metric-lbl">Total Pagu Anggaran</div>
+  </div>
+  <div class="metric-box">
+    <div class="metric-val">{total_opd}</div>
+    <div class="metric-lbl">Jumlah OPD</div>
+  </div>
+  <div class="metric-box">
+    <div class="metric-val">{fmt_rp_full(_avg_pagu)}</div>
+    <div class="metric-lbl">Rata-rata Pagu/Kegiatan</div>
+  </div>
+  <div class="metric-box">
+    <div class="metric-val">{_max_srs}</div>
+    <div class="metric-lbl">SRS Pagu Tertinggi</div>
+  </div>
+  <div class="metric-box">
+    <div class="metric-val">{df[C_TAHUN].nunique() if C_TAHUN else '-'}</div>
+    <div class="metric-lbl">Rentang Tahun</div>
+  </div>
+</div>
+
+<h3>Insight Utama</h3>
+{_ins_html}
+
+<h2>2. Analisis Data</h2>
+<h3>Distribusi Anggaran per OPD (Top 10)</h3>
+<table>
+  <thead><tr>
+    <th style='background:#0b3327;color:#fff;padding:7px 12px;text-align:left;font-size:0.8em;'>OPD</th>
+    <th style='background:#0b3327;color:#fff;padding:7px 12px;text-align:right;font-size:0.8em;'>Pagu</th>
+    <th style='background:#0b3327;color:#fff;padding:7px 12px;text-align:right;font-size:0.8em;'>%</th>
+  </tr></thead>
+  <tbody>{_opd_rows}</tbody>
+</table>
+
+<h2>3. Analisis Spasial</h2>
+<div style='background:#f8fdf9;border:1px solid #dce8e2;border-radius:8px;
+     padding:16px;text-align:center;color:#7a9a8a;font-size:0.85em;'>
+  <b>[ Screenshot Peta ]</b><br>
+  Untuk menambahkan screenshot peta, buka tab Peta Interaktif,
+  ambil screenshot, kemudian paste pada bagian ini setelah dokumen diprint ke PDF.
+  <br><br>
+  SRS dengan intensitas anggaran tertinggi: <b>{_max_srs}</b>
+</div>
+
+<h2>4. Top 10 Kegiatan Berdasarkan Pagu</h2>
+<table>
+  <thead><tr>{_top10_th}</tr></thead>
+  <tbody>{_top10_tr}</tbody>
+</table>
+
+<h2>5. Kesimpulan</h2>
+<div style='background:#f8fdf9;border:1px solid #dce8e2;border-radius:8px;padding:16px;
+     font-size:0.85em;line-height:1.7;'>
+  {_insights[0]['teks'] if _insights else ''}
+  <br><br>
+  <i>Catatan: Data bersumber dari Bidang Perencanaan Tata Ruang, Paniradya Kaistimewan,
+  Daerah Istimewa Yogyakarta. Laporan ini digenerate secara otomatis melalui
+  Dashboard Taru Istimewa pada {_tgl_gen}.</i>
+</div>
+
+<div class="footer">
+  Dashboard Taru Istimewa &nbsp;·&nbsp; Bidang Tata Ruang, Paniradya Kaistimewan &nbsp;·&nbsp;
+  © {_dt.datetime.now().year}
+</div>
+
+</div>
+</body>
+</html>"""
+
+            _html_bytes = _html_report.encode('utf-8')
+            st.download_button(
+                "⬇️ Download Laporan HTML (buka di browser → Ctrl+P → Simpan PDF)",
+                data=_html_bytes,
+                file_name=f"laporan_taru_{_dt.datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                mime="text/html",
+                key="dl_report_html"
+            )
+            st.success("✅ Laporan siap! Buka file HTML di browser lalu tekan Ctrl+P untuk simpan sebagai PDF.")
+
+        st.markdown("</div>", unsafe_allow_html=True)
 
     # ══════════════════════════════════════════════════════════
     # TAB 2 · PETA SRS
@@ -2180,16 +2624,12 @@ try:
                         except Exception:
                             pass
 
-                # ── Pilihan Basemap compact ──
-                _bm_c1, _bm_c2, _bm_c3 = st.columns([4, 1, 1])
-                with _bm_c2:
-                    if st.button("🏙️ Street", key="bm_street", use_container_width=True):
-                        st.session_state["basemap_choice"] = "street"
-                        st.rerun()
-                with _bm_c3:
-                    if st.button("🛰️ Satelit", key="bm_sat", use_container_width=True):
-                        st.session_state["basemap_choice"] = "sat"
-                        st.rerun()
+                # ── Toggle Basemap (satu tombol) ──
+                _bm_now = st.session_state.get("basemap_choice", "street")
+                _bm_label = "🛰️ Basemap: Satelit" if _bm_now == "sat" else "🏙️ Basemap: Street"
+                if st.button(_bm_label, key="bm_toggle", use_container_width=False):
+                    st.session_state["basemap_choice"] = "street" if _bm_now == "sat" else "sat"
+                    st.rerun()
 
                 # ── Input pencarian lokasi ──
                 _sc1, _sc2 = st.columns([5, 1])
@@ -2783,70 +3223,64 @@ document.addEventListener('DOMContentLoaded', function() {
                             df[C_SRS].astype(str).str.contains(_sel_nm, case=False, na=False)
                         ].copy()
                         if not _df_sel.empty:
-                            _mini_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_PAGU] if c]
-                            _df_mini = _df_sel[_mini_cols].copy()
-                            if C_PAGU in _df_mini.columns:
-                                _pagu_total = _df_sel[C_PAGU].sum()
-                                _df_mini[C_PAGU] = _df_mini[C_PAGU].apply(fmt_rp_full)
+                            _k_full = f"show_full_{hash(_sel_nm)}"
+                            _is_full = st.session_state.get(_k_full, False)
 
-                            st.markdown(
-                                f"<div style='margin:10px 0 5px 0;font-size:0.78rem;"
-                                f"font-weight:700;color:#0b3327;'>"
-                                f"Kegiatan di <span style='color:#27ae60;'>{_sel_nm}</span>"
-                                f" &nbsp;|&nbsp; {len(_df_sel):,} kegiatan"
-                                f" &nbsp;·&nbsp; {fmt_rp_full(_pagu_total)} total pagu</div>",
-                                unsafe_allow_html=True
-                            )
+                            _mini_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_PAGU] if c]
+                            _all_cols  = list(_df_sel.columns)
+
+                            # Pilih kolom sesuai mode
+                            _cols_used = _all_cols if _is_full else _mini_cols
+                            _df_show_tbl = _df_sel[_cols_used].copy()
+                            if C_PAGU in _df_show_tbl.columns:
+                                _pagu_total = _df_sel[C_PAGU].sum()
+                                _df_show_tbl[C_PAGU] = _df_show_tbl[C_PAGU].apply(fmt_rp_full)
+
+                            _mode_label = "📋 Ringkas" if _is_full else "📄 Lihat Semua Kolom"
+                            _hdr1, _hdr2 = st.columns([3, 1])
+                            with _hdr1:
+                                st.markdown(
+                                    f"<div style='margin:10px 0 5px;font-size:0.78rem;"
+                                    f"font-weight:700;color:#0b3327;'>"
+                                    f"Kegiatan di <span style='color:#27ae60;'>{_sel_nm}</span>"
+                                    f" &nbsp;|&nbsp; {len(_df_sel):,} kegiatan"
+                                    f" &nbsp;·&nbsp; {fmt_rp_full(_pagu_total)} total pagu</div>",
+                                    unsafe_allow_html=True
+                                )
+                            with _hdr2:
+                                if st.button(_mode_label,
+                                             key=f"btn_full_{hash(_sel_nm)}",
+                                             use_container_width=True):
+                                    st.session_state[_k_full] = not _is_full
+                                    st.rerun()
+
                             _th_m = "".join(
                                 f"<th style='background:#0b3327;color:#fff;font-size:0.68rem;"
                                 f"padding:6px 10px;text-align:left;white-space:nowrap;'>{c}</th>"
-                                for c in _df_mini.columns
+                                for c in _df_show_tbl.columns
                             )
                             _tr_m = ""
-                            for _ri, _row in _df_mini.iterrows():
+                            for _ri, _row in _df_show_tbl.iterrows():
                                 _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
                                 _tds = "".join(
                                     f"<td style='padding:5px 10px;font-size:0.68rem;"
                                     f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
                                     f"word-break:break-word;max-width:200px;'>{str(_row[c])}</td>"
-                                    for c in _df_mini.columns
+                                    for c in _df_show_tbl.columns
                                 )
                                 _tr_m += f"<tr style='background:{_bg};'>{_tds}</tr>"
                             st.markdown(
-                                f"<div style='overflow:auto;max-height:700px;"
+                                f"<div style='overflow:auto;max-height:500px;"
                                 f"border-radius:8px;border:1px solid #dce8e2;margin-bottom:4px;'>"
                                 f"<table style='border-collapse:collapse;width:100%;'>"
                                 f"<thead><tr>{_th_m}</tr></thead>"
                                 f"<tbody>{_tr_m}</tbody></table></div>",
                                 unsafe_allow_html=True
                             )
-                            if st.button(
-                                f"Lihat Semua Data Lengkap untuk {_sel_nm}",
-                                key=f"btn_goto_data_srs_{hash(_sel_nm)}",
-                                use_container_width=True
-                            ):
-                                k = f"show_full_{hash(_sel_nm)}"
-                                st.session_state[k] = not st.session_state.get(k, False)
-                                st.rerun()
-
-                            if st.session_state.get(f"show_full_{hash(_sel_nm)}", False):
-                                _df_full = df[
-                                    df[C_SRS].astype(str).str.contains(_sel_nm, case=False, na=False)
-                                ].copy()
-                                _df_disp = _df_full.copy()
-                                if C_PAGU in _df_disp.columns:
-                                    _df_disp[C_PAGU] = _df_disp[C_PAGU].apply(fmt_rp_full)
-                                st.markdown(
-                                    f"<div style='margin:8px 0 4px;font-size:0.78rem;"
-                                    f"font-weight:700;color:#0b3327;'>Semua {len(_df_full):,} "
-                                    f"kegiatan di <span style='color:#27ae60;'>{_sel_nm}</span></div>",
-                                    unsafe_allow_html=True
-                                )
-                                st.dataframe(_df_disp, use_container_width=True,
-                                             hide_index=True, height=400)
+                            if _is_full:
                                 import io as _io
                                 _buf = _io.BytesIO()
-                                _df_full.to_excel(_buf, index=False, engine='openpyxl')
+                                _df_sel.to_excel(_buf, index=False, engine='openpyxl')
                                 st.download_button(
                                     f"⬇️ Export Excel — {_sel_nm}",
                                     data=_buf.getvalue(),

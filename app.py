@@ -1915,19 +1915,28 @@ try:
             if _cmp_on:
                 _cmp_by = st.selectbox(
                     "Bandingkan berdasarkan:",
-                    options=[o for o in ["Tahun Anggaran", "SRS", "OPD"]
+                    options=[o for o in ["Tahun Anggaran", "SRS", "OPD", "Pelayanan", "Fokus"]
                              if (o != "Tahun Anggaran" or C_TAHUN)
                              and (o != "SRS" or C_SRS)
-                             and (o != "OPD" or C_OPD)],
+                             and (o != "OPD" or C_OPD)
+                             and (o != "Pelayanan" or C_PELAYAN)
+                             and (o != "Fokus" or C_FOKUS)],
                     key="cmp_by"
                 )
                 _cmp_col_map = {
                     "Tahun Anggaran": C_TAHUN,
                     "SRS": C_SRS,
                     "OPD": C_OPD,
+                    "Pelayanan": C_PELAYAN,
+                    "Fokus": C_FOKUS,
                 }
                 _cmp_col = _cmp_col_map.get(_cmp_by)
-                _cmp_x   = C_TAHUN if _cmp_by != "Tahun Anggaran" else C_SRS or C_OPD
+                # X axis: jika bandingkan tahun, pakai SRS atau OPD sebagai sumbu X
+                # jika bandingkan dimensi lain, pakai tahun sebagai sumbu X
+                if _cmp_by == "Tahun Anggaran":
+                    _cmp_x = C_SRS or C_OPD or C_PELAYAN
+                else:
+                    _cmp_x = C_TAHUN or C_SRS or C_OPD
 
                 if _cmp_col and _cmp_x:
                     _opts = sorted(df[_cmp_col].dropna().unique().tolist())
@@ -2080,7 +2089,7 @@ try:
 
             # 4. Insight Tren
             if C_TAHUN:
-                yr_grp = df.groupby(C_TAHUN)[C_PAGU].sum().sort_values()
+                yr_grp = df.groupby(C_TAHUN)[C_PAGU].sum().sort_index()
                 if len(yr_grp) >= 2:
                     thn_min = yr_grp.index[0]
                     thn_max = yr_grp.index[-1]
@@ -2192,27 +2201,54 @@ try:
                     f"<span style='font-size:0.85em;'>{_ins['teks']}</span></div>"
                 )
 
-            # Top 10 kegiatan
-            _top10 = df.nlargest(10, C_PAGU)
-            _top10_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_PAGU] if c]
-            _top10_disp = _top10[_top10_cols].copy()
-            if C_PAGU in _top10_disp.columns:
-                _top10_disp[C_PAGU] = _top10_disp[C_PAGU].apply(fmt_rp_full)
+            # Top 10 Pelayanan berdasarkan pagu
+            _top10_pelayan = pd.DataFrame()
+            if C_PELAYAN:
+                _top10_pelayan = (
+                    df.groupby(C_PELAYAN)[C_PAGU].sum()
+                    .sort_values(ascending=False)
+                    .head(10)
+                    .reset_index()
+                )
+                _top10_pelayan.columns = [C_PELAYAN, 'Total Pagu']
+                _top10_pelayan['Total Pagu'] = _top10_pelayan['Total Pagu'].apply(fmt_rp_full)
+
             _top10_th = "".join(
                 f"<th style='background:#0b3327;color:#fff;padding:7px 12px;"
                 f"text-align:left;font-size:0.8em;'>{c}</th>"
-                for c in _top10_disp.columns
+                for c in (_top10_pelayan.columns if not _top10_pelayan.empty else [C_PELAYAN or 'Pelayanan', 'Total Pagu'])
             )
             _top10_tr = ""
-            for _ri2, _row2 in _top10_disp.iterrows():
-                _bg2 = "#ffffff" if _ri2 % 2 == 0 else "#f0f9f4"
-                _top10_tr += (
-                    f"<tr style='background:{_bg2};'>" +
-                    "".join(f"<td style='padding:6px 12px;font-size:0.8em;"
-                            f"border-bottom:1px solid #eee;'>{str(_row2[c])}</td>"
-                            for c in _top10_disp.columns) +
-                    "</tr>"
-                )
+            if not _top10_pelayan.empty:
+                for _ri2, _row2 in _top10_pelayan.iterrows():
+                    _bg2 = "#ffffff" if _ri2 % 2 == 0 else "#f0f9f4"
+                    _top10_tr += (
+                        f"<tr style='background:{_bg2};'>" +
+                        "".join(f"<td style='padding:6px 12px;font-size:0.8em;"
+                                f"border-bottom:1px solid #eee;'>{str(_row2[c])}</td>"
+                                for c in _top10_pelayan.columns) +
+                        "</tr>"
+                    )
+            else:
+                _top10_tr = "<tr><td colspan='2' style='padding:8px;color:#999;'>Data tidak tersedia</td></tr>"
+
+            # Analisis spasial otomatis — tabel SRS
+            _srs_html_rows = ""
+            if C_SRS:
+                _srs_g = df.groupby(C_SRS)[C_PAGU].sum().sort_values(ascending=False)
+                _srs_tot = _srs_g.sum()
+                for _sn, _sv in _srs_g.items():
+                    _srs_pct = _sv / _srs_tot * 100 if _srs_tot > 0 else 0
+                    _bar_w   = int(_srs_pct * 2)  # max 200px untuk 100%
+                    _srs_html_rows += (
+                        f"<tr>"
+                        f"<td style='padding:5px 10px;font-size:0.78em;border-bottom:1px solid #eee;'>{_sn}</td>"
+                        f"<td style='padding:5px 10px;font-size:0.78em;border-bottom:1px solid #eee;text-align:right;'>{fmt_rp_full(_sv)}</td>"
+                        f"<td style='padding:5px 10px;border-bottom:1px solid #eee;'>"
+                        f"<div style='background:#27ae60;height:10px;width:{_bar_w}px;border-radius:3px;display:inline-block;'></div>"
+                        f" <span style='font-size:0.72em;color:#777;'>{_srs_pct:.1f}%</span></td>"
+                        f"</tr>"
+                    )
 
             # Distribusi OPD
             _opd_rows = ""
@@ -2238,53 +2274,78 @@ try:
 <meta charset="UTF-8">
 <title>Laporan Rekapitulasi Kegiatan Tata Ruang</title>
 <style>
-  body {{ font-family: 'Segoe UI', Arial, sans-serif; color: #1a1a1a;
-          margin: 0; padding: 0; font-size: 13px; }}
-  .page {{ max-width: 900px; margin: 0 auto; padding: 32px 40px; }}
-  h1 {{ color: #0b3327; font-size: 1.4em; margin: 0 0 4px; }}
-  h2 {{ color: #0b3327; font-size: 1.05em; border-bottom: 2px solid #27ae60;
-        padding-bottom: 4px; margin: 24px 0 12px; }}
-  h3 {{ color: #27ae60; font-size: 0.95em; margin: 16px 0 6px; }}
-  .header {{ background: #0b3327; color: white; padding: 24px 40px;
-             display: flex; align-items: center; gap: 20px; }}
-  .header-text h1 {{ color: white; font-size: 1.2em; }}
-  .header-text p {{ color: #a8d5c2; font-size: 0.8em; margin: 4px 0 0; }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: Arial, sans-serif; color: #1a1a1a;
+          font-size: 12px; line-height: 1.5; background: #fff; }}
+  .page {{ max-width: 960px; margin: 0 auto; padding: 0; }}
+  h2 {{ font-family: Arial, sans-serif; color: #0b3327; font-size: 13px;
+        border-bottom: 2px solid #27ae60; padding-bottom: 5px;
+        margin: 24px 0 12px; }}
+  h3 {{ font-family: Arial, sans-serif; color: #27ae60; font-size: 11.5px;
+        margin: 16px 0 8px; font-weight: bold; }}
+  .header {{ background: #0b3327; color: white;
+             padding: 20px 36px; display: flex;
+             align-items: center; gap: 20px; }}
+  .header-text h1 {{ font-family: Arial, sans-serif; color: white;
+                     font-size: 15px; font-weight: bold; margin-bottom: 4px; }}
+  .header-text p {{ font-family: Arial, sans-serif; color: #a8d5c2;
+                    font-size: 10px; margin: 0; }}
   .filter-bar {{ background: #f0f9f4; border: 1px solid #c8e6c9;
-                 padding: 8px 16px; font-size: 0.78em; color: #2d5a3d;
-                 margin: 16px 0; border-radius: 4px; }}
+                 padding: 7px 14px; font-size: 10px; color: #2d5a3d;
+                 margin: 14px 36px; border-radius: 4px; }}
+  .section {{ padding: 0 36px; }}
   .metric-grid {{ display: grid; grid-template-columns: repeat(3,1fr);
-                  gap: 12px; margin: 16px 0; }}
+                  gap: 10px; margin: 12px 0; }}
   .metric-box {{ background: #f8fdf9; border: 1px solid #dce8e2;
-                 border-radius: 8px; padding: 14px 16px; text-align: center; }}
-  .metric-val {{ font-size: 1.15em; font-weight: 800; color: #0b3327; }}
-  .metric-lbl {{ font-size: 0.72em; color: #7a9a8a; margin-top: 4px; }}
-  table {{ width: 100%; border-collapse: collapse; }}
-  .footer {{ margin-top: 32px; padding-top: 16px;
-             border-top: 1px solid #eee; font-size: 0.72em;
-             color: #999; text-align: center; }}
+                 border-radius: 6px; padding: 12px 14px; text-align: center; }}
+  .metric-val {{ font-family: Arial, sans-serif; font-size: 13px;
+                 font-weight: bold; color: #0b3327; }}
+  .metric-lbl {{ font-family: Arial, sans-serif; font-size: 9px;
+                 color: #7a9a8a; margin-top: 3px; }}
+  .insight-box {{ background: #f0f9f4; border-left: 3px solid #27ae60;
+                  padding: 8px 12px; margin-bottom: 8px; border-radius: 0 4px 4px 0; }}
+  .insight-title {{ font-family: Arial, sans-serif; font-weight: bold;
+                    font-size: 10.5px; color: #0b3327; margin-bottom: 3px; }}
+  .insight-text {{ font-family: Arial, sans-serif; font-size: 10px;
+                   color: #2d5a3d; }}
+  table {{ width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; }}
+  th {{ background: #0b3327; color: #fff; padding: 7px 10px;
+        text-align: left; font-size: 10px; font-family: Arial, sans-serif; }}
+  td {{ padding: 5px 10px; font-size: 10px; border-bottom: 1px solid #eee;
+        font-family: Arial, sans-serif; }}
+  tr:nth-child(even) td {{ background: #f8fdf9; }}
+  .footer {{ margin: 28px 0 0; padding: 12px 36px;
+             border-top: 1px solid #eee; font-family: Arial, sans-serif;
+             font-size: 9px; color: #aaa; text-align: center; }}
+  .srs-label {{ font-size: 9px; color: #777; }}
   @media print {{
-    .page {{ padding: 16px 20px; }}
-    .header {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    .header, th {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
     .metric-box {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    .insight-box {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
+    h2 {{ page-break-after: avoid; }}
+    table {{ page-break-inside: avoid; }}
   }}
 </style>
 </head>
 <body>
+<div class="page">
+
+<!-- HEADER -->
 <div class="header">
   {_logo_html}
   <div class="header-text">
     <h1>Laporan Rekapitulasi Kegiatan Keistimewaan Tata Ruang</h1>
-    <p>Bidang Perencanaan Tata Ruang &nbsp;·&nbsp; Paniradya Kaistimewan &nbsp;·&nbsp;
-       Digenerate: {_tgl_gen}</p>
+    <p>Bidang Perencanaan Tata Ruang &nbsp;·&nbsp; Paniradya Kaistimewan
+       &nbsp;·&nbsp; Digenerate: {_tgl_gen}</p>
   </div>
 </div>
 
-<div class="page">
+<!-- FILTER -->
+<div class="filter-bar"><b>Filter Aktif:</b> {_filter_str}</div>
 
-<div class="filter-bar">
-  <b>Filter Aktif:</b> {_filter_str}
-</div>
+<div class="section">
 
+<!-- 1. RINGKASAN -->
 <h2>1. Ringkasan Utama</h2>
 <div class="metric-grid">
   <div class="metric-box">
@@ -2316,49 +2377,62 @@ try:
 <h3>Insight Utama</h3>
 {_ins_html}
 
+<!-- 2. ANALISIS DATA -->
 <h2>2. Analisis Data</h2>
 <h3>Distribusi Anggaran per OPD (Top 10)</h3>
 <table>
   <thead><tr>
-    <th style='background:#0b3327;color:#fff;padding:7px 12px;text-align:left;font-size:0.8em;'>OPD</th>
-    <th style='background:#0b3327;color:#fff;padding:7px 12px;text-align:right;font-size:0.8em;'>Pagu</th>
-    <th style='background:#0b3327;color:#fff;padding:7px 12px;text-align:right;font-size:0.8em;'>%</th>
+    <th>OPD</th>
+    <th style="text-align:right;">Pagu</th>
+    <th style="text-align:right;">%</th>
   </tr></thead>
   <tbody>{_opd_rows}</tbody>
 </table>
 
-<h2>3. Analisis Spasial</h2>
-<div style='background:#f8fdf9;border:1px solid #dce8e2;border-radius:8px;
-     padding:16px;text-align:center;color:#7a9a8a;font-size:0.85em;'>
-  <b>[ Screenshot Peta ]</b><br>
-  Untuk menambahkan screenshot peta, buka tab Peta Interaktif,
-  ambil screenshot, kemudian paste pada bagian ini setelah dokumen diprint ke PDF.
-  <br><br>
-  SRS dengan intensitas anggaran tertinggi: <b>{_max_srs}</b>
-</div>
-
-<h2>4. Top 10 Kegiatan Berdasarkan Pagu</h2>
+<h3>Top 10 Pelayanan berdasarkan Pagu</h3>
 <table>
   <thead><tr>{_top10_th}</tr></thead>
   <tbody>{_top10_tr}</tbody>
 </table>
 
-<h2>5. Kesimpulan</h2>
-<div style='background:#f8fdf9;border:1px solid #dce8e2;border-radius:8px;padding:16px;
-     font-size:0.85em;line-height:1.7;'>
-  {_insights[0]['teks'] if _insights else ''}
-  <br><br>
-  <i>Catatan: Data bersumber dari Bidang Perencanaan Tata Ruang, Paniradya Kaistimewan,
-  Daerah Istimewa Yogyakarta. Laporan ini digenerate secara otomatis melalui
-  Dashboard Taru Istimewa pada {_tgl_gen}.</i>
+<!-- 3. ANALISIS SPASIAL -->
+<h2>3. Analisis Spasial</h2>
+<h3>Sebaran Pagu per Satuan Ruang Strategis (SRS)</h3>
+<table>
+  <thead><tr>
+    <th>Satuan Ruang Strategis</th>
+    <th style="text-align:right;">Total Pagu</th>
+    <th>Proporsi</th>
+  </tr></thead>
+  <tbody>{_srs_html_rows if _srs_html_rows else
+    "<tr><td colspan='3' style='padding:8px;color:#999;'>Data SRS tidak tersedia</td></tr>"
+  }</tbody>
+</table>
+<p style="font-size:9px;color:#999;margin-top:6px;">
+  * SRS dengan pagu tertinggi: <b>{_max_srs}</b>.
+  Untuk visualisasi peta interaktif, lihat tab Peta Interaktif pada Dashboard.
+</p>
+
+<!-- 4. KESIMPULAN -->
+<h2>4. Kesimpulan</h2>
+<div class="insight-box">
+  <div class="insight-text">
+    {' '.join([i['teks'] for i in _insights[:2]]) if _insights else ''}
+    <br><br>
+    <i>Catatan: Data bersumber dari Bidang Perencanaan Tata Ruang, Paniradya Kaistimewan,
+    Daerah Istimewa Yogyakarta. Laporan ini digenerate secara otomatis melalui
+    Dashboard Taru Istimewa pada {_tgl_gen}.</i>
+  </div>
 </div>
+
+</div><!-- /section -->
 
 <div class="footer">
-  Dashboard Taru Istimewa &nbsp;·&nbsp; Bidang Tata Ruang, Paniradya Kaistimewan &nbsp;·&nbsp;
-  © {_dt.datetime.now().year}
+  Dashboard Taru Istimewa &nbsp;·&nbsp; Bidang Tata Ruang, Paniradya Kaistimewan
+  &nbsp;·&nbsp; © {_dt.datetime.now().year}
 </div>
 
-</div>
+</div><!-- /page -->
 </body>
 </html>"""
 
@@ -2624,12 +2698,16 @@ try:
                         except Exception:
                             pass
 
-                # ── Toggle Basemap (satu tombol) ──
+                # ── Basemap toggle (minimal, di atas peta) ──
                 _bm_now = st.session_state.get("basemap_choice", "street")
-                _bm_label = "🛰️ Basemap: Satelit" if _bm_now == "sat" else "🏙️ Basemap: Street"
-                if st.button(_bm_label, key="bm_toggle", use_container_width=False):
-                    st.session_state["basemap_choice"] = "street" if _bm_now == "sat" else "sat"
-                    st.rerun()
+                _bm_cols = st.columns([6, 1])
+                with _bm_cols[1]:
+                    _bm_icon = "🛰️" if _bm_now == "street" else "🏙️"
+                    _bm_lbl  = f"{_bm_icon} {'Sat' if _bm_now == 'street' else 'Map'}"
+                    if st.button(_bm_lbl, key="bm_toggle", use_container_width=True,
+                                 help="Ganti basemap Street ↔ Satelit"):
+                        st.session_state["basemap_choice"] = "sat" if _bm_now == "street" else "street"
+                        st.rerun()
 
                 # ── Input pencarian lokasi ──
                 _sc1, _sc2 = st.columns([5, 1])
@@ -3039,6 +3117,46 @@ try:
 
                 # LayerControl – collapsed (ikon tumpuk, buka saat diklik)
                 folium.LayerControl(collapsed=True, position='topright').add_to(m_map)
+
+                # Basemap toggle — di dalam peta, di samping layer control
+                _bm_now = st.session_state.get("basemap_choice", "street")
+                _bm_next = "sat" if _bm_now == "street" else "street"
+                _bm_icon = "🛰️" if _bm_now == "street" else "🏙️"
+                _bm_title = "Satelit" if _bm_now == "street" else "Street"
+                _basemap_ctrl_html = f"""
+<style>
+.taru-bm-ctrl {{
+    position: absolute;
+    top: 80px;
+    right: 10px;
+    z-index: 1000;
+}}
+.taru-bm-btn {{
+    background: white;
+    border: 2px solid rgba(0,0,0,0.2);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #0b3327;
+    display: block;
+    text-align: center;
+    user-select: none;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.15);
+    white-space: nowrap;
+    text-decoration: none;
+}}
+.taru-bm-btn:hover {{ background: #f4f4f4; }}
+</style>
+<div class="taru-bm-ctrl">
+    <a class="taru-bm-btn" id="taruBmBtn"
+       href="?bm={_bm_next}" target="_self"
+       onclick="window.parent.postMessage({{type:'streamlit:setComponentValue',value:'{_bm_next}'}},
+       '*'); return false;"
+       title="Ganti ke {_bm_title}">{_bm_icon} {_bm_title}</a>
+</div>"""
+                m_map.get_root().html.add_child(folium.Element(_basemap_ctrl_html))
                 hide_internal = folium.Element("""
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -3543,26 +3661,50 @@ document.addEventListener('DOMContentLoaded', function() {
                     f"<tbody>{_tr}</tbody></table></div>{_note}",
                     unsafe_allow_html=True
                 )
-                if st.button("Lihat Semua di Data Lengkap →", key="btn_goto_data_pend", use_container_width=True):
-                    st.session_state["show_full_pend"] = not st.session_state.get("show_full_pend", False)
-                    st.rerun()
+                _k_pend_full = "show_full_pend"
+                _is_pend_full = st.session_state.get(_k_pend_full, False)
+                _pend_mini_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_FOKUS, C_PAGU] if c]
+                _pend_all_cols  = list(df_pend_filtered.columns)
+                _pend_cols_used = _pend_all_cols if _is_pend_full else _pend_mini_cols
+                _df_pend_show   = df_pend_filtered[_pend_cols_used].copy()
+                if C_PAGU in _df_pend_show.columns:
+                    _df_pend_show[C_PAGU] = _df_pend_show[C_PAGU].apply(fmt_rp_full)
 
-                if st.session_state.get("show_full_pend", False):
-                    _df_pf = df_pend_filtered.copy()
-                    _df_pf_disp = _df_pf.copy()
-                    if C_PAGU in _df_pf_disp.columns:
-                        _df_pf_disp[C_PAGU] = _df_pf_disp[C_PAGU].apply(fmt_rp_full)
-                    st.markdown(
-                        f"<div style='margin:8px 0 4px;font-size:0.78rem;font-weight:700;"
-                        f"color:#0b3327;'>Semua {len(_df_pf):,} data untuk kata kunci "
-                        f"<span style='color:#27ae60;'>{kw_p}</span></div>",
-                        unsafe_allow_html=True
+                _ph1, _ph2 = st.columns([3, 1])
+                with _ph2:
+                    _pend_mode_lbl = "📋 Ringkas" if _is_pend_full else "📄 Lihat Semua Kolom"
+                    if st.button(_pend_mode_lbl, key="btn_pend_full",
+                                 use_container_width=True):
+                        st.session_state[_k_pend_full] = not _is_pend_full
+                        st.rerun()
+
+                _th_pend = "".join(
+                    f"<th style='background:#0b3327;color:#fff;font-size:0.68rem;"
+                    f"padding:6px 10px;text-align:left;white-space:nowrap;'>{c}</th>"
+                    for c in _df_pend_show.columns
+                )
+                _tr_pend = ""
+                for _ri, _row in _df_pend_show.iterrows():
+                    _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
+                    _tds = "".join(
+                        f"<td style='padding:5px 10px;font-size:0.68rem;"
+                        f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
+                        f"word-break:break-word;max-width:200px;'>{str(_row[c])}</td>"
+                        for c in _df_pend_show.columns
                     )
-                    st.dataframe(_df_pf_disp, use_container_width=True,
-                                 hide_index=True, height=400)
+                    _tr_pend += f"<tr style='background:{_bg};'>{_tds}</tr>"
+                st.markdown(
+                    f"<div style='overflow:auto;max-height:500px;"
+                    f"border-radius:8px;border:1px solid #dce8e2;margin-bottom:4px;'>"
+                    f"<table style='border-collapse:collapse;width:100%;'>"
+                    f"<thead><tr>{_th_pend}</tr></thead>"
+                    f"<tbody>{_tr_pend}</tbody></table></div>",
+                    unsafe_allow_html=True
+                )
+                if _is_pend_full:
                     import io as _io2
                     _buf2 = _io2.BytesIO()
-                    _df_pf.to_excel(_buf2, index=False, engine='openpyxl')
+                    df_pend_filtered.to_excel(_buf2, index=False, engine='openpyxl')
                     st.download_button(
                         f"⬇️ Export Excel — {kw_p}",
                         data=_buf2.getvalue(),

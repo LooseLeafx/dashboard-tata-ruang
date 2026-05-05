@@ -1762,7 +1762,7 @@ try:
         col_opd, col_jenis = st.columns(2)
 
         with col_opd:
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("<div class='card' style='height:200px'>", unsafe_allow_html=True)
             st.markdown("<div class='card-title'>Pagu per OPD Pengampu</div>",
                         unsafe_allow_html=True)
             if C_OPD:
@@ -1799,7 +1799,7 @@ try:
         col_fokus, col_srs = st.columns(2)
 
         with col_fokus:
-            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("<div class='card' style='height:530px;'>", unsafe_allow_html=True)
             st.markdown("<div class='card-title'>Pagu per Fokus</div>",
                         unsafe_allow_html=True)
             if C_FOKUS:
@@ -3175,27 +3175,36 @@ document.addEventListener('DOMContentLoaded', function() {
                             st.session_state.selected_srs_map = None
                             st.rerun()
 
-                    # ── Tabel mini kegiatan di SRS yang dipilih ──
+ # ── Tabel mini kegiatan di SRS yang dipilih ──
                     if C_SRS:
-                        _df_sel = df[
-                            df[C_SRS].astype(str).str.contains(_sel_nm, case=False, na=False)
+                        # 1. Filter awal: ambil semua yang memuat SRS ini
+                        _df_sel_base = df[
+                            df[C_SRS].apply(lambda v: _sel_nm in kategorisasi_srs(v))
                         ].copy()
-                        if not _df_sel.empty:
+
+                        if not _df_sel_base.empty:
                             _k_full = f"show_full_{hash(_sel_nm)}"
+                            _k_eks = f"eks_map_{hash(_sel_nm)}"
                             _is_full = st.session_state.get(_k_full, False)
 
-                            _mini_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_PAGU] if c]
-                            _all_cols  = list(_df_sel.columns)
+                            _hdr1, _hdr_eks, _hdr2 = st.columns([4, 1.5, 1.5])
+                            
+                            with _hdr_eks:
+                                st.markdown("<div style='padding-top: 8px;'>", unsafe_allow_html=True)
+                                _is_eks = st.checkbox("Eksklusif 1 SRS", key=_k_eks, help="Sembunyikan kegiatan multi-SRS")
+                                st.markdown("</div>", unsafe_allow_html=True)
 
-                            # Pilih kolom sesuai mode
-                            _cols_used = _all_cols if _is_full else _mini_cols
-                            _df_show_tbl = _df_sel[_cols_used].copy()
-                            if C_PAGU in _df_show_tbl.columns:
-                                _pagu_total = _df_sel[C_PAGU].sum()
-                                _df_show_tbl[C_PAGU] = _df_show_tbl[C_PAGU].apply(fmt_rp_full)
+                            # 2. Terapkan filter eksklusif jika dicentang
+                            if _is_eks:
+                                _df_sel = _df_sel_base[_df_sel_base[C_SRS].apply(
+                                    lambda v: kategorisasi_srs(v) == [_sel_nm]
+                                )].copy()
+                            else:
+                                _df_sel = _df_sel_base.copy()
 
                             _mode_label = "📋 Ringkas" if _is_full else "📄 Lihat Semua Kolom"
-                            _hdr1, _hdr2 = st.columns([3, 1])
+                            _pagu_total = _df_sel[C_PAGU].sum() if not _df_sel.empty else 0
+
                             with _hdr1:
                                 st.markdown(
                                     f"<div style='margin:10px 0 5px;font-size:0.78rem;"
@@ -3205,6 +3214,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     f" &nbsp;·&nbsp; {fmt_rp_full(_pagu_total)} total pagu</div>",
                                     unsafe_allow_html=True
                                 )
+                                
                             with _hdr2:
                                 if st.button(_mode_label,
                                              key=f"btn_full_{hash(_sel_nm)}",
@@ -3212,40 +3222,53 @@ document.addEventListener('DOMContentLoaded', function() {
                                     st.session_state[_k_full] = not _is_full
                                     st.rerun()
 
-                            _th_m = "".join(
-                                f"<th style='background:#0b3327;color:#fff;font-size:0.68rem;"
-                                f"padding:6px 10px;text-align:left;white-space:nowrap;'>{c}</th>"
-                                for c in _df_show_tbl.columns
-                            )
-                            _tr_m = ""
-                            for _ri, _row in _df_show_tbl.iterrows():
-                                _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
-                                _tds = "".join(
-                                    f"<td style='padding:5px 10px;font-size:0.68rem;"
-                                    f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
-                                    f"word-break:break-word;max-width:200px;'>{str(_row[c])}</td>"
+                            # 3. Render tabel jika data tidak kosong setelah difilter eksklusif
+                            if not _df_sel.empty:
+                                _mini_cols = [c for c in [C_TAHUN, C_OPD, C_PELAYAN, C_PAGU] if c]
+                                _all_cols  = list(_df_sel.columns)
+
+                                # Pilih kolom sesuai mode
+                                _cols_used = _all_cols if _is_full else _mini_cols
+                                _df_show_tbl = _df_sel[_cols_used].copy()
+                                if C_PAGU in _df_show_tbl.columns:
+                                    _df_show_tbl[C_PAGU] = _df_show_tbl[C_PAGU].apply(fmt_rp_full)
+
+                                _th_m = "".join(
+                                    f"<th style='background:#0b3327;color:#fff;font-size:0.68rem;"
+                                    f"padding:6px 10px;text-align:left;white-space:nowrap;'>{c}</th>"
                                     for c in _df_show_tbl.columns
                                 )
-                                _tr_m += f"<tr style='background:{_bg};'>{_tds}</tr>"
-                            st.markdown(
-                                f"<div style='overflow:auto;max-height:500px;"
-                                f"border-radius:8px;border:1px solid #dce8e2;margin-bottom:4px;'>"
-                                f"<table style='border-collapse:collapse;width:100%;'>"
-                                f"<thead><tr>{_th_m}</tr></thead>"
-                                f"<tbody>{_tr_m}</tbody></table></div>",
-                                unsafe_allow_html=True
-                            )
-                            if _is_full:
-                                import io as _io
-                                _buf = _io.BytesIO()
-                                _df_sel.to_excel(_buf, index=False, engine='openpyxl')
-                                st.download_button(
-                                    f"⬇️ Export Excel — {_sel_nm}",
-                                    data=_buf.getvalue(),
-                                    file_name=f"data_{_sel_nm.replace(' ','_')}.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                    key=f"dl_xl_{hash(_sel_nm)}"
+                                _tr_m = ""
+                                for _ri, _row in _df_show_tbl.iterrows():
+                                    _bg = "#ffffff" if _ri % 2 == 0 else "#f7fdf9"
+                                    _tds = "".join(
+                                        f"<td style='padding:5px 10px;font-size:0.68rem;"
+                                        f"color:#1a3a2a;border-bottom:1px solid #eef2f0;"
+                                        f"word-break:break-word;max-width:200px;'>{str(_row[c])}</td>"
+                                        for c in _df_show_tbl.columns
+                                    )
+                                    _tr_m += f"<tr style='background:{_bg};'>{_tds}</tr>"
+                                st.markdown(
+                                    f"<div style='overflow:auto;max-height:500px;"
+                                    f"border-radius:8px;border:1px solid #dce8e2;margin-bottom:4px;'>"
+                                    f"<table style='border-collapse:collapse;width:100%;'>"
+                                    f"<thead><tr>{_th_m}</tr></thead>"
+                                    f"<tbody>{_tr_m}</tbody></table></div>",
+                                    unsafe_allow_html=True
                                 )
+                                if _is_full:
+                                    import io as _io
+                                    _buf = _io.BytesIO()
+                                    _df_sel.to_excel(_buf, index=False, engine='openpyxl')
+                                    st.download_button(
+                                        f"⬇️ Export Excel — {_sel_nm}",
+                                        data=_buf.getvalue(),
+                                        file_name=f"data_{_sel_nm.replace(' ','_')}.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        key=f"dl_xl_{hash(_sel_nm)}"
+                                    )
+                            else:
+                                st.info(f"Tidak ada kegiatan yang eksklusif HANYA di {_sel_nm} (semua kegiatan bersifat multi-SRS).")
                         else:
                             st.info(f"Tidak ada kegiatan yang tercatat di {_sel_nm}.")
 
@@ -3279,21 +3302,56 @@ document.addEventListener('DOMContentLoaded', function() {
             )
 
         _prefill_val = st.session_state.pop("data_search_prefill", "")
-        search_q = st.text_input(
-            "",
-            placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
-            key="data_search",
-            label_visibility="collapsed",
-            value=_prefill_val
-        )
+        
+        # ── KOTAK PENCARIAN & FILTER LOKAL SRS ──
+        c_search, c_srs, c_eks = st.columns([5, 3, 2])
+        with c_search:
+            search_q = st.text_input(
+                "Cari",
+                placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
+                key="data_search",
+                label_visibility="collapsed",
+                value=_prefill_val
+            )
+        with c_srs:
+            srs_lokal = "Semua SRS"
+            if C_SRS:
+                srs_lokal = st.selectbox(
+                    "Filter SRS Lokal",
+                    options=["Semua SRS"] + SRS_KATEGORI,
+                    key="data_srs_lokal",
+                    label_visibility="collapsed"
+                )
+        with c_eks:
+            is_eksklusif = False
+            if C_SRS and srs_lokal != "Semua SRS":
+                # Menambahkan sedikit jarak agar sejajar dengan input box
+                st.markdown("<div style='padding-top: 6px;'>", unsafe_allow_html=True)
+                is_eksklusif = st.checkbox("Eksklusif 1 SRS", help="Centang untuk menyembunyikan kegiatan Multi-SRS")
+                st.markdown("</div>", unsafe_allow_html=True)
 
         df_show = df.copy()
+        
+        # 1. Terapkan Pencarian Teks
         if search_q:
             mask = df_show.apply(
                 lambda col: col.astype(str).str.contains(
                     search_q, case=False, na=False)
             ).any(axis=1)
             df_show = df_show[mask]
+
+        # 2. Terapkan Filter Lokal SRS
+        if C_SRS and srs_lokal != "Semua SRS":
+            if is_eksklusif:
+                # Hanya ambil yang hasil kategorisasinya sama persis dengan 1 SRS tersebut
+                df_show = df_show[df_show[C_SRS].apply(
+                    lambda v: kategorisasi_srs(v) == [srs_lokal]
+                )]
+            else:
+                # Ambil semua yang mengandung SRS tersebut (termasuk multi-SRS)
+                df_show = df_show[df_show[C_SRS].apply(
+                    lambda v: srs_lokal in kategorisasi_srs(v)
+                )]
 
         st.markdown(
             f"<p style='font-size:0.69rem;color:#7a9a8a;margin:4px 0 8px;'>"

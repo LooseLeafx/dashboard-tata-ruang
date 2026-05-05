@@ -418,7 +418,8 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] .stMarkdown p,
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] .stMultiSelect label,
-[data-testid="stSidebar"] .stExpander summary p {
+[data-testid="stSidebar"] .stExpander summary p,
+[data-testid="stSidebar"] .stCheckbox summary p {
     color: rgba(255,255,255,0.9) !important;
 }
 [data-testid="stSidebar"] .stMultiSelect [data-baseweb="select"] > div,
@@ -1839,6 +1840,18 @@ try:
                 df_srs_rekap, total_pagu_asli, total_pagu_srs, pagu_double = \
                     buat_rekapitulasi_srs(df, C_SRS, C_PAGU)
 
+                if 'is_global_eksklusif' in locals() and is_global_eksklusif and sel_srs:
+                    df_srs_rekap = df_srs_rekap[df_srs_rekap['SRS'].isin(sel_srs)]
+
+                if not df_srs_rekap.empty:
+                    srs_agg = df_srs_rekap.rename(
+                        columns={'SRS': C_SRS, 'Total_Pagu': 'Pagu Anggaran'}
+                    )
+                    render_paged(srs_agg, C_SRS,
+                                 color_offset=9, page_key="srs_page")
+                else:
+                    st.info("Data SRS tidak tersedia.")
+
                 if pagu_double > 0:
                     st.markdown(
                         f"<div style='background:#fff8e1;border:1px solid #f39c12;"
@@ -1851,14 +1864,6 @@ try:
                         unsafe_allow_html=True
                     )
 
-                if not df_srs_rekap.empty:
-                    srs_agg = df_srs_rekap.rename(
-                        columns={'SRS': C_SRS, 'Total_Pagu': 'Pagu Anggaran'}
-                    )
-                    render_paged(srs_agg, C_SRS,
-                                 color_offset=9, page_key="srs_page")
-                else:
-                    st.info("Data SRS tidak tersedia.")
             else:
                 st.info("Kolom SRS tidak terdeteksi.")
             st.markdown("</div>", unsafe_allow_html=True)
@@ -3280,43 +3285,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
         _prefill_val = st.session_state.pop("data_search_prefill", "")
                 
-        # ── KOTAK PENCARIAN & FILTER EKSKLUSIF ──
-        c_search, c_eks = st.columns([4, 1])
-        with c_search:
-            search_q = st.text_input(
-                "Cari",
-                placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
-                key="data_search",
-                label_visibility="collapsed",
-                value=_prefill_val
-            )
-                    
-        with c_eks:
-            is_eksklusif = False
-            # Checkbox hanya muncul jika ada SRS yang dipilih di sidebar
-            if C_SRS and sel_srs and len(sel_srs) > 0:
-                st.markdown("<div style='padding-top: 6px;'>", unsafe_allow_html=True)
-                is_eksklusif = st.checkbox(
-                    "Eksklusif SRS Pilihan", 
-                    help="Sembunyikan kegiatan multi-SRS yang tidak relevan dengan pilihan di sidebar"
-                )
-                st.markdown("</div>", unsafe_allow_html=True)
+        # ── KOTAK PENCARIAN ──
+        search_q = st.text_input(
+            "Cari",
+            placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
+            key="data_search",
+            label_visibility="collapsed",
+            value=_prefill_val
+        )
 
         df_show = df.copy()
-                
-        # 1. Terapkan Filter Eksklusif SRS (berdasarkan pilihan di Sidebar)
-        if C_SRS and is_eksklusif and sel_srs and len(sel_srs) > 0:
-            df_show = df_show[df_show[C_SRS].apply(
-                # Memastikan SRS di data SAMA PERSIS dengan kombinasi SRS di sidebar
-                lambda v: set(kategorisasi_srs(v)) == set(sel_srs)
-            )]
-
-        # 2. Terapkan Pencarian Teks
+        
+        # ── Terapkan Pencarian Teks ──
         if search_q:
             mask = df_show.apply(
                 lambda col: col.astype(str).str.contains(
                     search_q, case=False, na=False)
             ).any(axis=1)
+            df_show = df_show[mask]
             df_show = df_show[mask]
 
         st.markdown(

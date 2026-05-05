@@ -2265,8 +2265,40 @@ try:
 <style>
   * {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{ font-family: Arial, sans-serif; color: #1a1a1a;
-          font-size: {_fs}; line-height: 1.5; background: #fff; }}
+          font-size: {_fs}; line-height: 1.5; background: #fff; padding: 20px; }}
+  h3 {{ color: #0b3327; margin-top: 20px; margin-bottom: 10px; border-bottom: 2px solid #27ae60; padding-bottom: 5px; }}
+  table {{ width: 100%; border-collapse: collapse; margin-bottom: 20px; }}
+</style>
+</head>
+<body>
+    {_logo_html}
+    <h2 style="color: #0b3327;">Laporan Rekapitulasi Kegiatan Tata Ruang</h2>
+    <p style="font-size: {_fs_sm}; color: #555;">
+        <b>Dibuat pada:</b> {_tgl_gen}<br>
+        <b>Filter Aktif:</b> {_filter_str}
+    </p>
+    
+    <div style="margin-bottom: 20px;">
+        {_ins_html}
+    </div>
 
+    <h3>Top 10 Pagu per Pelayanan</h3>
+    <table>
+        <thead><tr>{_top10_th}</tr></thead>
+        <tbody>{_top10_tr}</tbody>
+    </table>
+
+    <h3>Distribusi per Satuan Ruang Strategis (SRS)</h3>
+    <table>
+        <tbody>{_srs_html_rows}</tbody>
+    </table>
+
+    <h3>Distribusi per OPD</h3>
+    <table>
+        <tbody>{_opd_rows}</tbody>
+    </table>
+</body>
+</html>"""
 
             _html_bytes = _html_report.encode('utf-8')
             st.download_button(

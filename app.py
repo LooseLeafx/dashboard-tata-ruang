@@ -742,10 +742,10 @@ def render_paged(df_agg, col_name, color_offset=0, page_key="page"):
         html_items += bar_html(row[col_name], row['Pagu Anggaran'],
                                max_val, color, rank=rank)
 
-    # Menggunakan height tetap (misal: 350px) agar tinggi boks grafik 
-    # selalu seragam dan sejajar kanan-kiri.
+    # 👇 BESAR GRAPHIC BOX
+    # Misalnya: 400px (jika ingin lebih panjang) atau 250px (jika ingin lebih pendek)
     st.markdown(
-        f"<div style='height:350px;overflow-y:auto;"
+        f"<div style='height:450px;overflow-y:auto;"
         f"padding-right:4px;'>{html_items}</div>",
         unsafe_allow_html=True
     )
@@ -3292,7 +3292,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 use_container_width=True
             )
 
-        _prefill_val = st.session_state.pop("data_search_prefill", "")
+_prefill_val = st.session_state.pop("data_search_prefill", "")
         
         # ── KOTAK PENCARIAN & FILTER EKSKLUSIF ──
         c_search, c_eks = st.columns([4, 1])
@@ -3308,7 +3308,7 @@ document.addEventListener('DOMContentLoaded', function() {
         with c_eks:
             is_eksklusif = False
             # Checkbox hanya muncul jika ada SRS yang dipilih di sidebar
-            if C_SRS and len(sel_srs) > 0:
+            if C_SRS and sel_srs and len(sel_srs) > 0:
                 st.markdown("<div style='padding-top: 6px;'>", unsafe_allow_html=True)
                 is_eksklusif = st.checkbox(
                     "Eksklusif SRS Pilihan", 
@@ -3319,7 +3319,7 @@ document.addEventListener('DOMContentLoaded', function() {
         df_show = df.copy()
         
         # 1. Terapkan Filter Eksklusif SRS (berdasarkan pilihan di Sidebar)
-        if C_SRS and is_eksklusif and len(sel_srs) > 0:
+        if C_SRS and is_eksklusif and sel_srs and len(sel_srs) > 0:
             df_show = df_show[df_show[C_SRS].apply(
                 # Memastikan SRS di data SAMA PERSIS dengan kombinasi SRS di sidebar
                 lambda v: set(kategorisasi_srs(v)) == set(sel_srs)
@@ -3332,19 +3332,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     search_q, case=False, na=False)
             ).any(axis=1)
             df_show = df_show[mask]
-
-        # 2. Terapkan Filter Lokal SRS
-        if C_SRS and srs_lokal != "Semua SRS":
-            if is_eksklusif:
-                # Hanya ambil yang hasil kategorisasinya sama persis dengan 1 SRS tersebut
-                df_show = df_show[df_show[C_SRS].apply(
-                    lambda v: kategorisasi_srs(v) == [srs_lokal]
-                )]
-            else:
-                # Ambil semua yang mengandung SRS tersebut (termasuk multi-SRS)
-                df_show = df_show[df_show[C_SRS].apply(
-                    lambda v: srs_lokal in kategorisasi_srs(v)
-                )]
 
         st.markdown(
             f"<p style='font-size:0.69rem;color:#7a9a8a;margin:4px 0 8px;'>"

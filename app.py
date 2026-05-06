@@ -1308,14 +1308,22 @@ def load_referensi_pergub():
         return pd.DataFrame()
 
 def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
-    """Mengevaluasi kesesuaian berdasarkan keyword matching"""
+    """Mengevaluasi kesesuaian berdasarkan keyword matching secara presisi"""
     import re
     hasil_eval = []
     
+    # Deteksi otomatis nama kolom agar aman jika ada perbedaan spasi kecil di data
+    col_kegiatan = next((c for c in df_kegiatan.columns if 'kegiatan' in str(c).lower() and 'subkegiatan' in str(c).lower()), 'Kegiatan/Subkegiatan')
+    col_tolok = next((c for c in df_kegiatan.columns if 'tolok ukur' in str(c).lower()), 'Tolok Ukur Kinerja')
+    
     for _, row in df_kegiatan.iterrows():
         srs_kegiatan = str(row.get(c_srs, "")).strip()
-        # Gabungkan semua teks di baris ini untuk di-scan keywordnya
-        teks_gabungan = " ".join([str(v) for v in row.values if pd.notna(v)]).lower()
+        
+        # --- PERBAIKAN: Hanya gabungkan teks dari 2 kolom utama ---
+        teks_kegiatan = str(row.get(col_kegiatan, ""))
+        teks_tolok = str(row.get(col_tolok, ""))
+        teks_gabungan = f"{teks_kegiatan} {teks_tolok}".lower()
+        # ----------------------------------------------------------
         
         status = "Tidak Dievaluasi"
         skor = 0

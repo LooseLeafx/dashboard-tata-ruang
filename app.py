@@ -419,7 +419,9 @@ html, body, [class*="css"] {
 [data-testid="stSidebar"] label,
 [data-testid="stSidebar"] .stMultiSelect label,
 [data-testid="stSidebar"] .stExpander summary p,
-[data-testid="stSidebar"] .stCheckbox summary p {
+[data-testid="stSidebar"] [data-testid="stCheckbox"] p,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] span,
+[data-testid="stSidebar"] [data-testid="stCheckbox"] div {
     color: rgba(255,255,255,0.9) !important;
 }
 [data-testid="stSidebar"] .stMultiSelect [data-baseweb="select"] > div,
@@ -2135,150 +2137,163 @@ try:
         # EXPORT PDF REPORT
         # ══════════════════════════════════════════════════════════
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        st.markdown("<div class='card-title'>📄 Export Laporan PDF</div>",
-                    unsafe_allow_html=True)
+        
+        # Membagi baris untuk Judul dan Toggle
+        _title_col, _toggle_col = st.columns([4, 1])
+        with _title_col:
+            st.markdown("<div class='card-title' style='margin-bottom:0;'>📄 Export Laporan PDF</div>",
+                        unsafe_allow_html=True)
+        with _toggle_col:
+            tampilkan_export = st.toggle("Buka Menu", key="tgl_export")
 
-        _pdf_col1, _pdf_col2 = st.columns([3, 1])
-        with _pdf_col1:
-            st.markdown(
-                "<div style='font-size:0.75rem;color:#7a9a8a;'>"
-                "Generate laporan formal rekapitulasi kegiatan dalam format HTML "
-                "yang siap dikonversi ke PDF (Ctrl+P → Simpan sebagai PDF di browser)."
-                "</div>",
-                unsafe_allow_html=True
-            )
-        with _pdf_col2:
-            _logo_file = st.file_uploader("Logo Instansi (opsional)",
-                                          type=['png','jpg','jpeg'],
-                                          key="pdf_logo",
-                                          label_visibility="collapsed")
-
-        # Pengaturan tampilan PDF
-        _set_c1, _set_c2, _set_c3 = st.columns(3)
-        with _set_c1:
-            _pdf_tema = st.selectbox("🎨 Tema Warna", ["Hijau", "Biru", "Merah"], key="pdf_tema")
-        with _set_c2:
-            _pdf_fontsize = st.selectbox("🔡 Ukuran Font", ["Kecil (10px)", "Normal (12px)", "Besar (14px)"], index=1, key="pdf_fontsize")
-        with _set_c3:
-            _pdf_show_insight = st.checkbox("Sertakan Smart Insight", value=True, key="pdf_insight")
-
-        if st.button("🖨️ Generate Laporan HTML", key="btn_gen_pdf",
-                     use_container_width=True):
-            import io as _io_pdf, base64 as _b64, datetime as _dt
-
-            # Logo
-            _logo_html = ""
-            if _logo_file:
-                _logo_b64 = _b64.b64encode(_logo_file.read()).decode()
-                _logo_ext = _logo_file.name.split('.')[-1]
-                _logo_html = (
-                    f"<img src='data:image/{_logo_ext};base64,{_logo_b64}' "
-                    f"style='height:70px;object-fit:contain;margin-bottom:8px;' />"
+        # Menu hanya akan dirender jika toggle diaktifkan
+        if tampilkan_export:
+            st.markdown("<hr style='margin:10px 0;'>", unsafe_allow_html=True)
+            
+            _pdf_col1, _pdf_col2 = st.columns([3, 1])
+            with _pdf_col1:
+                st.markdown(
+                    "<div style='font-size:0.75rem;color:#7a9a8a;'>"
+                    "Generate laporan formal rekapitulasi kegiatan dalam format HTML "
+                    "yang siap dikonversi ke PDF (Ctrl+P → Simpan sebagai PDF di browser)."
+                    "</div>",
+                    unsafe_allow_html=True
                 )
+            with _pdf_col2:
+                _logo_file = st.file_uploader("Logo Instansi (opsional)",
+                                              type=['png','jpg','jpeg'],
+                                              key="pdf_logo",
+                                              label_visibility="collapsed")
 
-            # Filter aktif
-            _filter_aktif = []
-            if sel_tahun:   _filter_aktif.append(f"Tahun: {', '.join(map(str,sel_tahun))}")
-            if sel_srs:     _filter_aktif.append(f"SRS: {', '.join(sel_srs)}")
-            if sel_opd:     _filter_aktif.append(f"OPD: {', '.join(sel_opd)}")
-            _filter_str = " &nbsp;|&nbsp; ".join(_filter_aktif) if _filter_aktif else "Semua data"
-            _tgl_gen    = _dt.datetime.now().strftime("%d %B %Y %H:%M")
+            # Pengaturan tampilan PDF
+            _set_c1, _set_c2, _set_c3 = st.columns(3)
+            with _set_c1:
+                _pdf_tema = st.selectbox("🎨 Tema Warna", ["Hijau", "Biru", "Merah"], key="pdf_tema")
+            with _set_c2:
+                _pdf_fontsize = st.selectbox("🔡 Ukuran Font", ["Kecil (10px)", "Normal (12px)", "Besar (14px)"], index=1, key="pdf_fontsize")
+            with _set_c3:
+                # Tambahan padding agar checkbox sejajar secara vertikal dengan dropdown
+                st.markdown("<div style='padding-top: 28px;'>", unsafe_allow_html=True)
+                _pdf_show_insight = st.checkbox("Sertakan Smart Insight", value=True, key="pdf_insight")
+                st.markdown("</div>", unsafe_allow_html=True)
 
-            # Terapkan tema
-            _tema_map = {
-                "Hijau":  {"header": "#0b3327", "accent": "#27ae60", "light": "#f0f9f4", "border": "#c8e6c9"},
-                "Biru":   {"header": "#0d2b4e", "accent": "#2980b9", "light": "#eaf4fb", "border": "#b3d7ee"},
-                "Merah":  {"header": "#4a0e0e", "accent": "#c0392b", "light": "#fdf0f0", "border": "#f5b7b1"},
-            }
-            _t = _tema_map.get(_pdf_tema, _tema_map["Hijau"])
-            _fs_map = {"Kecil (10px)": "10px", "Normal (12px)": "12px", "Besar (14px)": "14px"}
-            _fs = _fs_map.get(_pdf_fontsize, "12px")
-            _fs_sm = {"10px": "9px", "12px": "10px", "14px": "12px"}[_fs]
+            if st.button("🖨️ Generate Laporan HTML", key="btn_gen_pdf",
+                         use_container_width=True):
+                import io as _io_pdf, base64 as _b64, datetime as _dt
 
-            _ins_html = ""
-            if _pdf_show_insight:
-                _t_light  = _t["light"]
-                _t_accent = _t["accent"]
-                for _ins in _insights[:3]:
-                    _ins_html += (
-                        f"<div style='background:{_t_light};border-left:3px solid {_t_accent};"
-                        f"padding:8px 12px;margin-bottom:8px;border-radius:0 4px 4px 0;'>"
-                        f"<b>{_ins['icon']} {_ins['judul']}</b><br>"
-                        f"<span style='font-size:0.85em;'>{_ins['teks']}</span></div>"
+                # Logo
+                _logo_html = ""
+                if _logo_file:
+                    _logo_b64 = _b64.b64encode(_logo_file.read()).decode()
+                    _logo_ext = _logo_file.name.split('.')[-1]
+                    _logo_html = (
+                        f"<img src='data:image/{_logo_ext};base64,{_logo_b64}' "
+                        f"style='height:70px;object-fit:contain;margin-bottom:8px;' />"
                     )
 
-            # Metrik
-            _avg_pagu = df[C_PAGU].mean() if len(df) > 0 else 0
-            _max_srs  = df.groupby(C_SRS)[C_PAGU].sum().idxmax() if C_SRS else "-"
+                # Filter aktif
+                _filter_aktif = []
+                if sel_tahun:   _filter_aktif.append(f"Tahun: {', '.join(map(str,sel_tahun))}")
+                if sel_srs:     _filter_aktif.append(f"SRS: {', '.join(sel_srs)}")
+                if sel_opd:     _filter_aktif.append(f"OPD: {', '.join(sel_opd)}")
+                _filter_str = " &nbsp;|&nbsp; ".join(_filter_aktif) if _filter_aktif else "Semua data"
+                _tgl_gen    = _dt.datetime.now().strftime("%d %B %Y %H:%M")
 
-            # Top 10 Pelayanan berdasarkan pagu
-            _top10_pelayan = pd.DataFrame()
-            if C_PELAYAN:
-                _top10_pelayan = (
-                    df.groupby(C_PELAYAN)[C_PAGU].sum()
-                    .sort_values(ascending=False)
-                    .head(10)
-                    .reset_index()
+                # Terapkan tema
+                _tema_map = {
+                    "Hijau":  {"header": "#0b3327", "accent": "#27ae60", "light": "#f0f9f4", "border": "#c8e6c9"},
+                    "Biru":   {"header": "#0d2b4e", "accent": "#2980b9", "light": "#eaf4fb", "border": "#b3d7ee"},
+                    "Merah":  {"header": "#4a0e0e", "accent": "#c0392b", "light": "#fdf0f0", "border": "#f5b7b1"},
+                }
+                _t = _tema_map.get(_pdf_tema, _tema_map["Hijau"])
+                _fs_map = {"Kecil (10px)": "10px", "Normal (12px)": "12px", "Besar (14px)": "14px"}
+                _fs = _fs_map.get(_pdf_fontsize, "12px")
+                _fs_sm = {"10px": "9px", "12px": "10px", "14px": "12px"}[_fs]
+
+                _ins_html = ""
+                if _pdf_show_insight:
+                    _t_light  = _t["light"]
+                    _t_accent = _t["accent"]
+                    for _ins in _insights[:3]:
+                        _ins_html += (
+                            f"<div style='background:{_t_light};border-left:3px solid {_t_accent};"
+                            f"padding:8px 12px;margin-bottom:8px;border-radius:0 4px 4px 0;'>"
+                            f"<b>{_ins['icon']} {_ins['judul']}</b><br>"
+                            f"<span style='font-size:0.85em;'>{_ins['teks']}</span></div>"
+                        )
+
+                # Metrik
+                _avg_pagu = df[C_PAGU].mean() if len(df) > 0 else 0
+                _max_srs  = df.groupby(C_SRS)[C_PAGU].sum().idxmax() if C_SRS else "-"
+
+                # Top 10 Pelayanan berdasarkan pagu
+                _top10_pelayan = pd.DataFrame()
+                if C_PELAYAN:
+                    _top10_pelayan = (
+                        df.groupby(C_PELAYAN)[C_PAGU].sum()
+                        .sort_values(ascending=False)
+                        .head(10)
+                        .reset_index()
+                    )
+                    _top10_pelayan.columns = [C_PELAYAN, 'Total Pagu']
+                    _top10_pelayan['Total Pagu'] = _top10_pelayan['Total Pagu'].apply(fmt_rp_full)
+
+                _top10_th = "".join(
+                    f"<th style='background:#0b3327;color:#fff;padding:7px 12px;"
+                    f"text-align:left;font-size:0.8em;'>{c}</th>"
+                    for c in (_top10_pelayan.columns if not _top10_pelayan.empty else [C_PELAYAN or 'Pelayanan', 'Total Pagu'])
                 )
-                _top10_pelayan.columns = [C_PELAYAN, 'Total Pagu']
-                _top10_pelayan['Total Pagu'] = _top10_pelayan['Total Pagu'].apply(fmt_rp_full)
+                _top10_tr = ""
+                if not _top10_pelayan.empty:
+                    for _ri2, _row2 in _top10_pelayan.iterrows():
+                        _bg2 = "#ffffff" if _ri2 % 2 == 0 else "#f0f9f4"
+                        _top10_tr += (
+                            f"<tr style='background:{_bg2};'>" +
+                            "".join(f"<td style='padding:6px 12px;font-size:0.8em;"
+                                    f"border-bottom:1px solid #eee;'>{str(_row2[c])}</td>"
+                                    for c in _top10_pelayan.columns) +
+                            "</tr>"
+                        )
+                else:
+                    _top10_tr = "<tr><td colspan='2' style='padding:8px;color:#999;'>Data tidak tersedia</td></tr>"
 
-            _top10_th = "".join(
-                f"<th style='background:#0b3327;color:#fff;padding:7px 12px;"
-                f"text-align:left;font-size:0.8em;'>{c}</th>"
-                for c in (_top10_pelayan.columns if not _top10_pelayan.empty else [C_PELAYAN or 'Pelayanan', 'Total Pagu'])
-            )
-            _top10_tr = ""
-            if not _top10_pelayan.empty:
-                for _ri2, _row2 in _top10_pelayan.iterrows():
-                    _bg2 = "#ffffff" if _ri2 % 2 == 0 else "#f0f9f4"
-                    _top10_tr += (
-                        f"<tr style='background:{_bg2};'>" +
-                        "".join(f"<td style='padding:6px 12px;font-size:0.8em;"
-                                f"border-bottom:1px solid #eee;'>{str(_row2[c])}</td>"
-                                for c in _top10_pelayan.columns) +
-                        "</tr>"
-                    )
-            else:
-                _top10_tr = "<tr><td colspan='2' style='padding:8px;color:#999;'>Data tidak tersedia</td></tr>"
+                # Analisis spasial otomatis — tabel SRS
+                _srs_html_rows = ""
+                if C_SRS:
+                    _srs_g = df.groupby(C_SRS)[C_PAGU].sum().sort_values(ascending=False)
+                    _srs_tot = _srs_g.sum()
+                    for _sn, _sv in _srs_g.items():
+                        _srs_pct = _sv / _srs_tot * 100 if _srs_tot > 0 else 0
+                        _bar_w   = int(_srs_pct * 2)  # max 200px untuk 100%
+                        _srs_html_rows += (
+                            f"<tr>"
+                            f"<td style='padding:5px 10px;font-size:0.78em;border-bottom:1px solid #eee;'>{_sn}</td>"
+                            f"<td style='padding:5px 10px;font-size:0.78em;border-bottom:1px solid #eee;text-align:right;'>{fmt_rp_full(_sv)}</td>"
+                            f"<td style='padding:5px 10px;border-bottom:1px solid #eee;'>"
+                            f"<div style='background:#27ae60;height:10px;width:{_bar_w}px;border-radius:3px;display:inline-block;'></div>"
+                            f" <span style='font-size:0.72em;color:#777;'>{_srs_pct:.1f}%</span></td>"
+                            f"</tr>"
+                        )
 
-            # Analisis spasial otomatis — tabel SRS
-            _srs_html_rows = ""
-            if C_SRS:
-                _srs_g = df.groupby(C_SRS)[C_PAGU].sum().sort_values(ascending=False)
-                _srs_tot = _srs_g.sum()
-                for _sn, _sv in _srs_g.items():
-                    _srs_pct = _sv / _srs_tot * 100 if _srs_tot > 0 else 0
-                    _bar_w   = int(_srs_pct * 2)  # max 200px untuk 100%
-                    _srs_html_rows += (
-                        f"<tr>"
-                        f"<td style='padding:5px 10px;font-size:0.78em;border-bottom:1px solid #eee;'>{_sn}</td>"
-                        f"<td style='padding:5px 10px;font-size:0.78em;border-bottom:1px solid #eee;text-align:right;'>{fmt_rp_full(_sv)}</td>"
-                        f"<td style='padding:5px 10px;border-bottom:1px solid #eee;'>"
-                        f"<div style='background:#27ae60;height:10px;width:{_bar_w}px;border-radius:3px;display:inline-block;'></div>"
-                        f" <span style='font-size:0.72em;color:#777;'>{_srs_pct:.1f}%</span></td>"
-                        f"</tr>"
-                    )
+                # Distribusi OPD
+                _opd_rows = ""
+                if C_OPD:
+                    _opd_g = df.groupby(C_OPD)[C_PAGU].sum().sort_values(ascending=False).head(10)
+                    _tot_opd = _opd_g.sum()
+                    for _on, _ov in _opd_g.items():
+                        _pct_o = _ov / _tot_opd * 100 if _tot_opd > 0 else 0
+                        _opd_rows += (
+                            f"<tr><td style='padding:5px 10px;font-size:0.8em;"
+                            f"border-bottom:1px solid #eee;'>{_on}</td>"
+                            f"<td style='padding:5px 10px;font-size:0.8em;"
+                            f"border-bottom:1px solid #eee;text-align:right;'>"
+                            f"{fmt_rp_full(_ov)}</td>"
+                            f"<td style='padding:5px 10px;font-size:0.8em;"
+                            f"border-bottom:1px solid #eee;text-align:right;'>"
+                            f"{_pct_o:.1f}%</td></tr>"
+                        )
 
-            # Distribusi OPD
-            _opd_rows = ""
-            if C_OPD:
-                _opd_g = df.groupby(C_OPD)[C_PAGU].sum().sort_values(ascending=False).head(10)
-                _tot_opd = _opd_g.sum()
-                for _on, _ov in _opd_g.items():
-                    _pct_o = _ov / _tot_opd * 100 if _tot_opd > 0 else 0
-                    _opd_rows += (
-                        f"<tr><td style='padding:5px 10px;font-size:0.8em;"
-                        f"border-bottom:1px solid #eee;'>{_on}</td>"
-                        f"<td style='padding:5px 10px;font-size:0.8em;"
-                        f"border-bottom:1px solid #eee;text-align:right;'>"
-                        f"{fmt_rp_full(_ov)}</td>"
-                        f"<td style='padding:5px 10px;font-size:0.8em;"
-                        f"border-bottom:1px solid #eee;text-align:right;'>"
-                        f"{_pct_o:.1f}%</td></tr>"
-                    )
-
-            _html_report = f"""<!DOCTYPE html>
+                _html_report = f"""<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
@@ -2321,15 +2336,15 @@ try:
 </body>
 </html>"""
 
-            _html_bytes = _html_report.encode('utf-8')
-            st.download_button(
-                "⬇️ Download Laporan HTML (buka di browser → Ctrl+P → Simpan PDF)",
-                data=_html_bytes,
-                file_name=f"laporan_taru_{_dt.datetime.now().strftime('%Y%m%d_%H%M')}.html",
-                mime="text/html",
-                key="dl_report_html"
-            )
-            st.success("✅ Laporan siap! Buka file HTML di browser lalu tekan Ctrl+P untuk simpan sebagai PDF.")
+                _html_bytes = _html_report.encode('utf-8')
+                st.download_button(
+                    "⬇️ Download Laporan HTML (buka di browser → Ctrl+P → Simpan PDF)",
+                    data=_html_bytes,
+                    file_name=f"laporan_taru_{_dt.datetime.now().strftime('%Y%m%d_%H%M')}.html",
+                    mime="text/html",
+                    key="dl_report_html"
+                )
+                st.success("✅ Laporan siap! Buka file HTML di browser lalu tekan Ctrl+P untuk simpan sebagai PDF.")
 
         st.markdown("</div>", unsafe_allow_html=True)
 

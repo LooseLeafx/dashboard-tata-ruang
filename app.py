@@ -22,257 +22,181 @@ from pathlib import Path
 # ============================================================
 LAYERS_DIR = "layers"
 LAYERS_METADATA_FILE = "layers_metadata.json"
-DRIVE_FOLDER_ID = None
+
+# ⚠️ GANTI TEKS DI BAWAH INI DENGAN ID FOLDER DRIVE ANDA ⚠️
+DRIVE_FOLDER_ID = "1TOx3q1FKpietbdPLMFPZLPb0i5NoMk_s" 
 DRIVE_SERVICE = None
 
 def setup_google_drive():
     """Setup Google Drive API untuk penyimpanan layer permanen"""
-    global DRIVE_FOLDER_ID, DRIVE_SERVICE
-    import sys
+    global DRIVE_SERVICE
     try:
-        # Load folder ID dari Streamlit Secrets
-        DRIVE_FOLDER_ID = st.secrets["drive_config"]["folder_id"]
-        print(f"[DRIVE] folder_id: {DRIVE_FOLDER_ID}", file=sys.stderr)
-
         from google.oauth2.service_account import Credentials
         from googleapiclient.discovery import build
 
-        sa_info = {k: v for k, v in st.secrets["gcp_service_account"].items()}
-        pk = sa_info.get("private_key", "")
-        if "\\n" in pk:
-            pk = pk.replace("\\n", "\n")
-        sa_info["private_key"] = pk
-
-        print(f"[DRIVE] client_email: {sa_info.get('client_email')}", file=sys.stderr)
+        sa_info = dict(st.secrets["gcp_service_account"])
+        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
 
         creds = Credentials.from_service_account_info(
             sa_info,
-            scopes=[
-                'https://www.googleapis.com/auth/drive',
-                'https://www.googleapis.com/auth/drive.file'
-            ]
+            scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.file']
         )
         DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
-        # Test koneksi
-        DRIVE_SERVICE.files().list(pageSize=1, fields="files(id)").execute()
-        print(f"[DRIVE] setup SUCCESS", file=sys.stderr)
         return True
     except Exception as e:
-        print(f"[DRIVE] setup FAILED: {type(e).__name__}: {e}", file=sys.stderr)
+        st.error(f"Gagal koneksi ke Google Drive: {e}")
         return False
 
 def upload_layer_to_drive(filename, file_content):
-    """Upload file KMZ ke Google Drive"""
-    if not DRIVE_SERVICE or not DRIVE_FOLDER_ID:
-        return None
-    
+    """Upload file Peta ke Google Drive secara langsung"""
+    if not DRIVE_SERVICE or not DRIVE_FOLDER_ID: return None
     try:
-        from googleapiclient.http import MediaFileUpload
-        from io import BytesIO
-        import tempfile
+        from googleapiclient.http import MediaIoBaseUpload
+        import io
         
-        # Tulis konten ke file sementara untuk di-upload
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.kmz') as tmp:
-            tmp.write(file_content)
-            tmp_path = tmp.name
+        fh = io.BytesIO(file_content)
+        media = MediaIoBaseUpload(fh, mimetype='application/octet-stream', resumable=True)
+        file_metadata = {'name': filename, 'parents': [DRIVE_FOLDER_ID]}
         
-        # Upload ke Google Drive
-        file_metadata = {
-            'name': filename,
-            'parents': [DRIVE_FOLDER_ID],
-            'mimeType': 'application/vnd.google-earth.kmz'
-        }
-        media = MediaFileUpload(tmp_path, mimetype='application/vnd.google-earth.kmz')
-        file_result = DRIVE_SERVICE.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        ).execute()
-        
-        os.remove(tmp_path)
+        file_result = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields='id').execute()
         return file_result.get('id')
     except Exception as e:
+        st.error(f"Gagal Upload Peta: {e}")
         return None
 
 def download_layer_from_drive(file_id):
-    """Download file KMZ dari Google Drive"""
-    if not DRIVE_SERVICE:
-        return None
-    
+    if not DRIVE_SERVICE: return None
     try:
-        from io import BytesIO
-        
+        import io
+        from googleapiclient.http import MediaIoBaseDownload
         request = DRIVE_SERVICE.files().get_media(fileId=file_id)
-        fh = BytesIO()
-        downloader = googleapiclient.http.MediaIoBaseDownload(fh, request)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
-            status, done = downloader.next_chunk()
+            _, done = downloader.next_chunk()
         return fh.getvalue()
-    except Exception as e:
+    except Exception:
         return None
 
 def delete_layer_from_drive(file_id):
-    """Hapus file KMZ dari Google Drive"""
-    if not DRIVE_SERVICE:
-        return False
-    
+    if not DRIVE_SERVICE: return False
     try:
         DRIVE_SERVICE.files().delete(fileId=file_id).execute()
         return True
-    except Exception as e:
+    except Exception:
         return False
 
 def init_layers_storage():
-    """Inisialisasi penyimpanan layer (Google Drive atau lokal)"""
-    global DRIVE_SERVICE, DRIVE_FOLDER_ID
-    
-    # Coba setup Google Drive
-    drive_ok = setup_google_drive()
-    
-    if not drive_ok:
-        # Fallback ke lokal
-        if not os.path.exists(LAYERS_DIR):
-            os.makedirs(LAYERS_DIR)
-        if not os.path.exists(LAYERS_METADATA_FILE):
-            with open(LAYERS_METADATA_FILE, "w") as f:
-                json.dump([], f)
+    setup_google_drive()
+    if not os.path.exists(LAYERS_DIR): os.makedirs(LAYERS_DIR)
 
 def load_layers_from_storage():
-    """Load metadata semua layer dari storage (Google Drive atau lokal)"""
+    """Load metadata dari Drive agar tidak hilang saat aplikasi direstart"""
     if DRIVE_SERVICE and DRIVE_FOLDER_ID:
-        # Load dari cache local jika ada (untuk performa)
-        if os.path.exists(LAYERS_METADATA_FILE):
-            try:
-                with open(LAYERS_METADATA_FILE, "r") as f:
-                    return json.load(f)
-            except:
-                pass
-    
-    # Fallback ke lokal
-    try:
-        with open(LAYERS_METADATA_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return []
+        try:
+            import io, json
+            from googleapiclient.http import MediaIoBaseDownload
+            # Cari file metadata di Drive
+            query = f"name='{LAYERS_METADATA_FILE}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+            results = DRIVE_SERVICE.files().list(q=query, fields="files(id)").execute()
+            items = results.get('files', [])
+            
+            if items:
+                request = DRIVE_SERVICE.files().get_media(fileId=items[0]['id'])
+                fh = io.BytesIO()
+                downloader = MediaIoBaseDownload(fh, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                return json.loads(fh.getvalue().decode('utf-8'))
+        except Exception:
+            pass
+            
+    # Fallback jika di Drive belum ada
+    if os.path.exists(LAYERS_METADATA_FILE):
+        try:
+            with open(LAYERS_METADATA_FILE, "r") as f:
+                return json.load(f)
+        except: pass
+    return []
 
 def save_layers_to_storage(layers):
-    """Simpan metadata semua layer ke storage"""
-    # Simpan ke local cache
+    """Simpan metadata ke Drive agar permanen"""
+    import json
     with open(LAYERS_METADATA_FILE, "w") as f:
         json.dump(layers, f, indent=2)
+        
+    if DRIVE_SERVICE and DRIVE_FOLDER_ID:
+        try:
+            import io
+            from googleapiclient.http import MediaIoBaseUpload
+            json_bytes = json.dumps(layers, indent=2).encode('utf-8')
+            media = MediaIoBaseUpload(io.BytesIO(json_bytes), mimetype='application/json', resumable=True)
+            
+            # Update file jika ada, jika tidak buat baru
+            query = f"name='{LAYERS_METADATA_FILE}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
+            results = DRIVE_SERVICE.files().list(q=query, fields="files(id)").execute()
+            items = results.get('files', [])
+            
+            if items:
+                DRIVE_SERVICE.files().update(fileId=items[0]['id'], media_body=media).execute()
+            else:
+                DRIVE_SERVICE.files().create(body={'name': LAYERS_METADATA_FILE, 'parents': [DRIVE_FOLDER_ID]}, media_body=media).execute()
+        except Exception:
+            pass
 
 def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
-    """Tambahkan layer baru ke penyimpanan permanen (KMZ, KML, atau SHP zip)"""
     init_layers_storage()
     layers = load_layers_from_storage()
-    
-    # Cek apakah layer dengan nama yang sama sudah ada
     existing_idx = next((i for i, l in enumerate(layers) if l['name'] == name), None)
     
-    # Upload ke Google Drive jika tersedia, jika tidak simpan lokal
     file_content = uploaded_file.read()
-    ext = file_type  # 'kmz', 'kml', atau 'shp'
     
     if DRIVE_SERVICE and DRIVE_FOLDER_ID:
-        # Upload ke Google Drive
-        file_id = upload_layer_to_drive(f"taru_layer_{name}.{ext}", file_content)
+        file_id = upload_layer_to_drive(f"taru_layer_{name}.{file_type}", file_content)
         if file_id:
+            import time
             entry = {
-                'name': name,
-                'file_id': file_id,
-                'drive_url': f'https://drive.google.com/file/d/{file_id}',
-                'color_config': color_config,
-                'visible': True,
-                'type': file_type,
-                'storage': 'drive',
-                'created_at': time.time()
+                'name': name, 'file_id': file_id,
+                'color_config': color_config, 'visible': True,
+                'type': file_type, 'storage': 'drive', 'created_at': time.time()
             }
-        else:
-            # Fallback ke lokal jika upload Drive gagal
-            file_id = hashlib.md5(name.encode()).hexdigest()[:8]
-            filename = f"{file_id}_{int(time.time())}.{ext}"
-            filepath = os.path.join(LAYERS_DIR, filename)
-            with open(filepath, "wb") as f:
-                f.write(file_content)
-            entry = {
-                'name': name,
-                'filename': filename,
-                'color_config': color_config,
-                'visible': True,
-                'type': file_type,
-                'storage': 'local',
-                'created_at': time.time()
-            }
+        else: return None
     else:
-        # Simpan lokal
-        file_id = hashlib.md5(name.encode()).hexdigest()[:8]
-        filename = f"{file_id}_{int(time.time())}.{ext}"
-        filepath = os.path.join(LAYERS_DIR, filename)
-        os.makedirs(LAYERS_DIR, exist_ok=True)
-        with open(filepath, "wb") as f:
-            f.write(file_content)
-        entry = {
-            'name': name,
-            'filename': filename,
-            'color_config': color_config,
-            'visible': True,
-            'type': file_type,
-            'storage': 'local',
-            'created_at': time.time()
-        }
-    
+        st.warning("ID Folder Drive belum diatur dengan benar.")
+        return None
+        
     if existing_idx is not None:
-        # Hapus file lama jika ada
-        old_layer = layers[existing_idx]
-        if old_layer.get('storage') == 'drive' and DRIVE_SERVICE:
-            delete_layer_from_drive(old_layer.get('file_id'))
-        elif old_layer.get('storage') == 'local':
-            old_file = os.path.join(LAYERS_DIR, old_layer.get('filename', ''))
-            if os.path.exists(old_file):
-                os.remove(old_file)
+        if layers[existing_idx].get('storage') == 'drive':
+            delete_layer_from_drive(layers[existing_idx].get('file_id'))
         layers[existing_idx] = entry
     else:
         layers.append(entry)
-    
+        
     save_layers_to_storage(layers)
     return entry
 
 def delete_layer_from_storage(name):
-    """Hapus layer dari penyimpanan permanen"""
     layers = load_layers_from_storage()
     existing = [l for l in layers if l['name'] == name]
-    
     if existing:
-        layer = existing[0]
-        if layer.get('storage') == 'drive' and DRIVE_SERVICE:
-            delete_layer_from_drive(layer.get('file_id'))
-        elif layer.get('storage') == 'local':
-            filepath = os.path.join(LAYERS_DIR, layer.get('filename', ''))
-            if os.path.exists(filepath):
-                os.remove(filepath)
-        
+        if existing[0].get('storage') == 'drive':
+            delete_layer_from_drive(existing[0].get('file_id'))
         layers = [l for l in layers if l['name'] != name]
         save_layers_to_storage(layers)
         return True
     return False
 
 def get_layer_file_path(layer):
-    """Dapatkan path file layer (lokal atau dari Drive)"""
-    ltype = layer.get('type', 'kmz')
-    ext = 'zip' if ltype == 'shp' else ltype
-    
     if layer.get('storage') == 'drive' and DRIVE_SERVICE:
         file_content = download_layer_from_drive(layer.get('file_id'))
         if file_content:
             import tempfile
+            ext = 'zip' if layer.get('type') == 'shp' else layer.get('type', 'kmz')
             with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
                 tmp.write(file_content)
                 return tmp.name
-    else:
-        filepath = os.path.join(LAYERS_DIR, layer.get('filename', ''))
-        if os.path.exists(filepath):
-            return filepath
     return None
 
 
@@ -1320,7 +1244,7 @@ def load_referensi_pergub():
         return pd.DataFrame()
 
 def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
-    """Mengevaluasi kesesuaian berdasarkan keyword matching secara presisi dan transparan"""
+    """Mengevaluasi kesesuaian berdasarkan keyword matching secara presisi F0dan transparan"""
     import re
     import pandas as pd
     hasil_eval = []

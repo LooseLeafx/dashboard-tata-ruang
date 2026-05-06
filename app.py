@@ -1320,42 +1320,29 @@ def load_referensi_pergub():
         return pd.DataFrame()
 
 def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
-    """Mengevaluasi kesesuaian berdasarkan keyword matching secara presisi"""
+    """Mengevaluasi kesesuaian berdasarkan keyword matching secara presisi dan transparan"""
     import re
     import pandas as pd
     hasil_eval = []
     
-    # 1. Deteksi Kolom Referensi GSheet secara akurat
+    # 1. Deteksi Kolom Referensi GSheet (Sangat Spesifik)
     ref_cols = df_ref.columns.tolist()
     c_ref_srs = next((c for c in ref_cols if 'satuan ruang strategis' in str(c).lower()), None)
-    c_ref_keb = next((c for c in ref_cols if 'kebijakan' in str(c).lower()), None)
-    c_ref_str = next((c for c in ref_cols if 'strategi' in str(c).lower()), None)
     c_ref_kw  = next((c for c in ref_cols if 'keyword' in str(c).lower()), None)
 
-    # 2. Deteksi Kolom Data Utama (Kunci agar tidak tertukar dengan "Jenis Kegiatan")
+    # 2. Deteksi Kolom Data Utama (Lebih kebal terhadap spasi tersembunyi di Excel)
     cols = df_kegiatan.columns.tolist()
-    col_kegiatan = None
-    col_tolok = None
+    col_kegiatan = next((c for c in cols if 'kegiatan' in str(c).lower() and 'jenis' not in str(c).lower()), None)
+    col_tolok = next((c for c in cols if 'tolok ukur' in str(c).lower() or 'kinerja' in str(c).lower()), None)
     
-    for c in cols:
-        cl = str(c).lower()
-        # Harus "subkegiatan" ATAU "kegiatan" tapi BUKAN "jenis"
-        if ('subkegiatan' in cl) or ('kegiatan' in cl and 'jenis' not in cl):
-            if not col_kegiatan:  
-                col_kegiatan = c
-        # Tangkap kolom Tolok Ukur Kinerja
-        if 'tolok' in cl or 'kinerja' in cl:
-            if not col_tolok:
-                col_tolok = c
-            
     for _, row in df_kegiatan.iterrows():
         srs_kegiatan = str(row.get(c_srs, "")).strip()
         
-        # 3. Ekstrak Teks Utama (Kegiatan + Tolok Ukur Kinerja)
-        teks_kegiatan = str(row.get(col_kegiatan, "")) if col_kegiatan else ""
-        teks_tolok = str(row.get(col_tolok, "")) if col_tolok else ""
+        # 3. Ekstrak Teks Utama secara paksa (Jika kosong, tulis 'KOSONG')
+        teks_kegiatan = str(row[col_kegiatan]) if col_kegiatan and pd.notna(row[col_kegiatan]) else "KOSONG"
+        teks_tolok = str(row[col_tolok]) if col_tolok and pd.notna(row[col_tolok]) else "KOSONG"
         
-        # Gabungkan dan bersihkan teks utama
+        # Gabungkan dan bersihkan teks utama (buang tanda baca)
         teks_gabungan = f"{teks_kegiatan} {teks_tolok}".lower()
         teks_bersih = re.sub(r'[^\w\s]', ' ', teks_gabungan)
         
@@ -1371,15 +1358,13 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
             ref_match = df_ref[df_ref[c_ref_srs].astype(str).str.contains(srs_target, case=False, na=False)]
             
             if not ref_match.empty:
-                kebijakan = ref_match[c_ref_keb].iloc[0] if c_ref_keb else "Kebijakan N/A"
-                strategi = ref_match[c_ref_str].iloc[0] if c_ref_str else "Strategi N/A"
                 keywords_raw = ref_match[c_ref_kw].iloc[0] if c_ref_kw else ""
                 
                 # Ambil daftar keyword unik dari GSheet Referensi
                 daftar_kw = list(set([k.strip().lower() for k in str(keywords_raw).split(',') if k.strip()]))
                 
                 if daftar_kw:
-                    # Scan kecocokan keyword di dalam teks Kegiatan + Tolok Ukur
+                    # Scan kecocokan keyword di dalam teks gabungan
                     matched = [kw for kw in daftar_kw if kw in teks_bersih]
                     
                     skor = (len(matched) / len(daftar_kw)) * 100
@@ -1391,15 +1376,19 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
                     else:
                         status = "Tidak Sesuai"
                         
+                    # Format output yang sangat transparan
                     alasan = (
-                        f"[Dasar Kebijakan] {kebijakan} - {strategi}. \n\n"
-                        f"[Hasil Pencocokan] {len(matched)} dari {len(daftar_kw)} keyword unik ditemukan ({', '.join(matched) if matched else 'Tidak ada'}). \n\n"
-                        f"[Kesimpulan] Skor {skor:.0f}%, {status}."
+                        f"📋 [TEKS DIEVALUASI]\n"
+                        f"• Kegiatan: {teks_kegiatan}\n"
+                        f"• Tolok Ukur: {teks_tolok}\n\n"
+                        f"🔑 [KEYWORD REFERENSI]: {', '.join(daftar_kw)}\n\n"
+                        f"✅ [HASIL PENCOCOKAN]: {len(matched)} dari {len(daftar_kw)} keyword unik ditemukan -> ({', '.join(matched) if matched else 'Tidak ada'}).\n\n"
+                        f"🎯 [KESIMPULAN]: Skor {skor:.0f}%, {status}."
                     )
                 else:
-                    alasan = "[Kesimpulan] Kolom Keyword di GSheet referensi kosong."
+                    alasan = "⚠️ [Kesimpulan] Kolom Keyword di GSheet referensi kosong untuk SRS ini."
             else:
-                alasan = f"[Kesimpulan] SRS '{srs_target}' tidak ditemukan di GSheet referensi."
+                alasan = f"⚠️ [Kesimpulan] SRS '{srs_target}' tidak ditemukan di GSheet referensi."
         
         hasil_eval.append({"Status Kesesuaian": status, "Skor Kesesuaian": skor, "Alasan Evaluasi": alasan})
         

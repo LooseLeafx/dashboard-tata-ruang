@@ -1287,6 +1287,86 @@ def load_data():
     return df
 
 
+@st.cache_data(ttl=300, show_spinner="Memuat referensi Pergub...")
+def load_referensi_pergub():
+    """Fungsi khusus untuk menarik data dari GSheet Referensi SRS Anda"""
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/spreadsheets"]
+        sa_info = dict(st.secrets["gcp_service_account"])
+        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+        creds  = ServiceAccountCredentials.from_json_keyfile_dict(sa_info, scope)
+        client = gspread.authorize(creds)
+        
+        # ID GSheet yang Anda berikan
+        sheet  = client.open_by_key("1WSYS1iv0_CXkDec5mZOgLKdy1HPu2Dw16uYt3MfYmng").sheet1
+        raw    = sheet.get_all_values()
+        
+        # Asumsi baris pertama adalah Header
+        df_ref = pd.DataFrame(raw[1:], columns=raw[0])
+        return df_ref
+    except Exception as e:
+        return pd.DataFrame()
+
+def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
+    """Mengevaluasi kesesuaian berdasarkan keyword matching"""
+    import re
+    hasil_eval = []
+    
+    for _, row in df_kegiatan.iterrows():
+        srs_kegiatan = str(row.get(c_srs, "")).strip()
+        # Gabungkan semua teks di baris ini untuk di-scan keywordnya
+        teks_gabungan = " ".join([str(v) for v in row.values if pd.notna(v)]).lower()
+        
+        status = "Tidak Dievaluasi"
+        skor = 0
+        alasan = "-"
+        
+        if srs_kegiatan and srs_kegiatan.lower() != "non srs" and not df_ref.empty:
+            # Ambil SRS pertama jika ada multi-SRS
+            srs_target = [s.strip() for s in srs_kegiatan.split(',')][0]
+            
+            # Cari di data referensi
+            ref_match = df_ref[df_ref['Satuan Ruang Strategis'].str.contains(srs_target, case=False, na=False)]
+            
+            if not ref_match.empty:
+                kebijakan = ref_match['Kebijakan'].iloc[0] if 'Kebijakan' in ref_match.columns else "Kebijakan N/A"
+                strategi = ref_match['Strategi'].iloc[0] if 'Strategi' in ref_match.columns else "Strategi N/A"
+                keywords_raw = ref_match['Keyword'].iloc[0] if 'Keyword' in ref_match.columns else ""
+                
+                daftar_kw = [k.strip().lower() for k in str(keywords_raw).split(',') if k.strip()]
+                
+                if daftar_kw:
+                    # Scan keyword
+                    matched = [kw for kw in daftar_kw if re.search(rf'\b{re.escape(kw)}\b', teks_gabungan)]
+                    skor = (len(matched) / len(daftar_kw)) * 100
+                    
+                    if skor >= 70:
+                        status = "Sangat Sesuai"
+                    elif skor >= 30:
+                        status = "Cukup Sesuai"
+                    else:
+                        status = "Tidak Sesuai"
+                        
+                    alasan = (
+                        f"[Dasar Kebijakan] {kebijakan} - {strategi}. "
+                        f"[Hasil Pencocokan] {len(matched)} dari {len(daftar_kw)} keyword ditemukan ({', '.join(matched) if matched else 'Tidak ada'}). "
+                        f"[Kesimpulan] Skor {skor:.0f}%, {status}."
+                    )
+                else:
+                    alasan = "[Kesimpulan] Keyword di referensi kosong."
+            else:
+                alasan = f"[Kesimpulan] SRS {srs_target} tidak ditemukan di referensi Pergub."
+        
+        hasil_eval.append({"Status Kesesuaian": status, "Skor Kesesuaian": skor, "Alasan Evaluasi": alasan})
+        
+    # Gabungkan ke dataframe
+    df_eval = pd.DataFrame(hasil_eval, index=df_kegiatan.index)
+    df_hasil = df_kegiatan.copy()
+    for col in df_eval.columns:
+        df_hasil[col] = df_eval[col]
+        
+    return df_hasil
+
 # ============================================================
 # 5. APLIKASI UTAMA
 # ============================================================
@@ -2132,6 +2212,62 @@ try:
             )
 
         st.markdown("</div>", unsafe_allow_html=True)
+
+        # ══════════════════════════════════════════════════════════
+        # ANALISIS KESESUAIAN PERGUB
+        # ══════════════════════════════════════════════════════════
+        if C_SRS:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.markdown("<div class='card-title'>⚖️ Analisis Kesesuaian Strategi Pengembangan Wilayah (Pergub)</div>", unsafe_allow_html=True)
+            
+            with st.spinner("Mencocokkan keyword dengan data referensi..."):
+                df_ref_pergub = load_referensi_pergub()
+                
+                if not df_ref_pergub.empty:
+                    # Jalankan evaluasi pada data aktif saat ini
+                    df_evaluasi = evaluasi_kesesuaian_pergub(df, df_ref_pergub, C_SRS)
+                    
+                    # Buang yang "Tidak Dievaluasi" (seperti Non SRS)
+                    df_valid_eval = df_evaluasi[df_evaluasi["Status Kesesuaian"] != "Tidak Dievaluasi"]
+                    
+                    if not df_valid_eval.empty:
+                        # 1. SUMMARY
+                        s_sangat = len(df_valid_eval[df_valid_eval["Status Kesesuaian"] == "Sangat Sesuai"])
+                        s_cukup = len(df_valid_eval[df_valid_eval["Status Kesesuaian"] == "Cukup Sesuai"])
+                        s_tidak = len(df_valid_eval[df_valid_eval["Status Kesesuaian"] == "Tidak Sesuai"])
+                        
+                        ec1, ec2, ec3 = st.columns(3)
+                        with ec1:
+                            st.markdown(f"<div style='background:#e8f5e9;padding:15px;border-radius:8px;border-left:4px solid #27ae60;'><div style='font-size:0.75rem;color:#2d5a3d;font-weight:bold;'>Sangat Sesuai</div><div style='font-size:1.6rem;color:#0b3327;font-weight:bold;'>{s_sangat} <span style='font-size:0.8rem;font-weight:normal;'>kegiatan</span></div></div>", unsafe_allow_html=True)
+                        with ec2:
+                            st.markdown(f"<div style='background:#fff8e1;padding:15px;border-radius:8px;border-left:4px solid #f39c12;'><div style='font-size:0.75rem;color:#7d5a00;font-weight:bold;'>Cukup Sesuai</div><div style='font-size:1.6rem;color:#0b3327;font-weight:bold;'>{s_cukup} <span style='font-size:0.8rem;font-weight:normal;'>kegiatan</span></div></div>", unsafe_allow_html=True)
+                        with ec3:
+                            st.markdown(f"<div style='background:#fdedec;padding:15px;border-radius:8px;border-left:4px solid #c0392b;'><div style='font-size:0.75rem;color:#78281f;font-weight:bold;'>Tidak Sesuai</div><div style='font-size:1.6rem;color:#0b3327;font-weight:bold;'>{s_tidak} <span style='font-size:0.8rem;font-weight:normal;'>kegiatan</span></div></div>", unsafe_allow_html=True)
+                        
+                        st.markdown("<hr style='margin:20px 0;'>", unsafe_allow_html=True)
+                        
+                        # 2. LEVEL DETAIL & ALASAN
+                        st.markdown("<div style='font-size:0.8rem;font-weight:700;color:#0b3327;margin-bottom:10px;'>Detail Evaluasi per Kegiatan</div>", unsafe_allow_html=True)
+                        
+                        # Kolom yang akan ditampilkan (bisa disesuaikan dengan header excel Anda)
+                        kolom_tampil = [c for c in ['Kegiatan/Subkegiatan', C_OPD, C_PAGU, 'Status Kesesuaian', 'Alasan Evaluasi'] if c in df_valid_eval.columns]
+                        
+                        st.dataframe(
+                            df_valid_eval[kolom_tampil],
+                            use_container_width=True,
+                            hide_index=True,
+                            height=300,
+                            column_config={
+                                "Status Kesesuaian": st.column_config.TextColumn("Status", width="small"),
+                                "Alasan Evaluasi": st.column_config.TextColumn("Alasan (Scroll untuk baca lengkap)", width="large"),
+                                C_PAGU: st.column_config.NumberColumn("Pagu", format="Rp %d") if C_PAGU in kolom_tampil else None
+                            }
+                        )
+                    else:
+                        st.info("Tidak ada kegiatan SRS yang dievaluasi pada filter saat ini.")
+                else:
+                    st.warning("⚠️ Data referensi Pergub kosong atau gagal ditarik dari Google Sheets. Pastikan Service Account sudah diberikan akses Viewer ke file GSheet tersebut.")
+            st.markdown("</div>", unsafe_allow_html=True)       
 
         # ══════════════════════════════════════════════════════════
         # EXPORT PDF REPORT

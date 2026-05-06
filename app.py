@@ -976,8 +976,20 @@ def save_session_to_file():
 
 
 def restore_session_from_file():
-    """Session tidak di-restore dari file — setiap browser/perangkat login mandiri."""
-    pass
+    """Membaca session dari file agar login bertahan meski di-refresh"""
+    try:
+        session_file = get_session_file()
+        if session_file.exists():
+            with open(session_file, "r") as f:
+                session_data = json.load(f)
+            
+            # Kembalikan data ke st.session_state
+            st.session_state.logged_in = session_data.get("logged_in", False)
+            st.session_state.username = session_data.get("username", None)
+            st.session_state.login_time = session_data.get("login_time", None)
+            st.session_state.last_activity_time = session_data.get("last_activity_time", None)
+    except Exception as e:
+        pass
 
 
 def update_activity():
@@ -1310,28 +1322,40 @@ def load_referensi_pergub():
 def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
     """Mengevaluasi kesesuaian berdasarkan keyword matching secara presisi"""
     import re
+    import pandas as pd
     hasil_eval = []
     
-    # 1. Deteksi kolom otomatis yang lebih kebal terhadap typo/spasi
+    # 1. Deteksi Kolom Referensi GSheet secara akurat
+    ref_cols = df_ref.columns.tolist()
+    c_ref_srs = next((c for c in ref_cols if 'satuan ruang strategis' in str(c).lower()), None)
+    c_ref_keb = next((c for c in ref_cols if 'kebijakan' in str(c).lower()), None)
+    c_ref_str = next((c for c in ref_cols if 'strategi' in str(c).lower()), None)
+    c_ref_kw  = next((c for c in ref_cols if 'keyword' in str(c).lower()), None)
+
+    # 2. Deteksi Kolom Data Utama (Kunci agar tidak tertukar dengan "Jenis Kegiatan")
     cols = df_kegiatan.columns.tolist()
     col_kegiatan = None
     col_tolok = None
     
     for c in cols:
         cl = str(c).lower()
-        if 'kegiatan' in cl or 'subkegiatan' in cl:
-            col_kegiatan = c
+        # Harus "subkegiatan" ATAU "kegiatan" tapi BUKAN "jenis"
+        if ('subkegiatan' in cl) or ('kegiatan' in cl and 'jenis' not in cl):
+            if not col_kegiatan:  
+                col_kegiatan = c
+        # Tangkap kolom Tolok Ukur Kinerja
         if 'tolok' in cl or 'kinerja' in cl:
-            col_tolok = c
+            if not col_tolok:
+                col_tolok = c
             
     for _, row in df_kegiatan.iterrows():
         srs_kegiatan = str(row.get(c_srs, "")).strip()
         
-        # Ambil teks dari kolom yang ditemukan
+        # 3. Ekstrak Teks Utama (Kegiatan + Tolok Ukur Kinerja)
         teks_kegiatan = str(row.get(col_kegiatan, "")) if col_kegiatan else ""
         teks_tolok = str(row.get(col_tolok, "")) if col_tolok else ""
         
-        # Gabungkan dan bersihkan tanda baca agar pencarian kata lebih bersih
+        # Gabungkan dan bersihkan teks utama
         teks_gabungan = f"{teks_kegiatan} {teks_tolok}".lower()
         teks_bersih = re.sub(r'[^\w\s]', ' ', teks_gabungan)
         
@@ -1339,23 +1363,23 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
         skor = 0
         alasan = "-"
         
-        if srs_kegiatan and srs_kegiatan.lower() != "non srs" and not df_ref.empty:
+        if srs_kegiatan and srs_kegiatan.lower() != "non srs" and not df_ref.empty and c_ref_srs:
             # Ambil SRS pertama jika ada multi-SRS
             srs_target = [s.strip() for s in srs_kegiatan.split(',')][0]
             
-            # Cari di data referensi
-            ref_match = df_ref[df_ref['Satuan Ruang Strategis'].str.contains(srs_target, case=False, na=False)]
+            # Cari baris yang sesuai di GSheet Referensi
+            ref_match = df_ref[df_ref[c_ref_srs].astype(str).str.contains(srs_target, case=False, na=False)]
             
             if not ref_match.empty:
-                kebijakan = ref_match['Kebijakan'].iloc[0] if 'Kebijakan' in ref_match.columns else "Kebijakan N/A"
-                strategi = ref_match['Strategi'].iloc[0] if 'Strategi' in ref_match.columns else "Strategi N/A"
-                keywords_raw = ref_match['Keyword'].iloc[0] if 'Keyword' in ref_match.columns else ""
+                kebijakan = ref_match[c_ref_keb].iloc[0] if c_ref_keb else "Kebijakan N/A"
+                strategi = ref_match[c_ref_str].iloc[0] if c_ref_str else "Strategi N/A"
+                keywords_raw = ref_match[c_ref_kw].iloc[0] if c_ref_kw else ""
                 
-                # 2. Bersihkan keyword dan hilangkan duplikat menggunakan set()
+                # Ambil daftar keyword unik dari GSheet Referensi
                 daftar_kw = list(set([k.strip().lower() for k in str(keywords_raw).split(',') if k.strip()]))
                 
                 if daftar_kw:
-                    # 3. Pencocokan Sub-string yang fleksibel (bisa mendeteksi kata berimbuhan)
+                    # Scan kecocokan keyword di dalam teks Kegiatan + Tolok Ukur
                     matched = [kw for kw in daftar_kw if kw in teks_bersih]
                     
                     skor = (len(matched) / len(daftar_kw)) * 100
@@ -1373,13 +1397,13 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
                         f"[Kesimpulan] Skor {skor:.0f}%, {status}."
                     )
                 else:
-                    alasan = "[Kesimpulan] Keyword di referensi kosong."
+                    alasan = "[Kesimpulan] Kolom Keyword di GSheet referensi kosong."
             else:
-                alasan = f"[Kesimpulan] SRS {srs_target} tidak ditemukan di referensi Pergub."
+                alasan = f"[Kesimpulan] SRS '{srs_target}' tidak ditemukan di GSheet referensi."
         
         hasil_eval.append({"Status Kesesuaian": status, "Skor Kesesuaian": skor, "Alasan Evaluasi": alasan})
         
-    # Gabungkan ke dataframe
+    # Gabungkan kembali kolom hasil analisis ke DataFrame utama
     df_eval = pd.DataFrame(hasil_eval, index=df_kegiatan.index)
     df_hasil = df_kegiatan.copy()
     for col in df_eval.columns:
@@ -1396,14 +1420,19 @@ try:
     # ─────────────────────────────────────────────────────────
     initialize_session_state()
     
-    # Update activity timestamp setiap kali page di-render (SEBELUM timeout check)
-    if st.session_state.logged_in and st.session_state.last_activity_time is not None:
-        update_activity()
-    
-    # Check if session has timed out (setelah activity update)
+    # 1. Check if session has timed out (LAKUKAN SEBELUM ACTIVITY UPDATE)
     if check_session_timeout(timeout_seconds=3600):  # 1 hour = 3600 seconds
         st.warning("⏰ Sesi Anda telah berakhir karena tidak ada aktivitas selama 1 jam. Silakan login kembali.")
+        # File session dihapus agar benar-benar logout
+        try:
+            get_session_file().unlink(missing_ok=True)
+        except:
+            pass
         st.rerun()
+        
+    # 2. Update activity timestamp (LAKUKAN JIKA BELUM TIMEOUT)
+    if st.session_state.logged_in:
+        update_activity()
     
     # Jika belum login, tampilkan halaman login
     if not st.session_state.logged_in:

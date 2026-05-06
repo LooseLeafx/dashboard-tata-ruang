@@ -1312,18 +1312,28 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
     import re
     hasil_eval = []
     
-    # Deteksi otomatis nama kolom agar aman jika ada perbedaan spasi kecil di data
-    col_kegiatan = next((c for c in df_kegiatan.columns if 'kegiatan' in str(c).lower() and 'subkegiatan' in str(c).lower()), 'Kegiatan/Subkegiatan')
-    col_tolok = next((c for c in df_kegiatan.columns if 'tolok ukur' in str(c).lower()), 'Tolok Ukur Kinerja')
+    # 1. Deteksi kolom otomatis yang lebih kebal terhadap typo/spasi
+    cols = df_kegiatan.columns.tolist()
+    col_kegiatan = None
+    col_tolok = None
     
+    for c in cols:
+        cl = str(c).lower()
+        if 'kegiatan' in cl or 'subkegiatan' in cl:
+            col_kegiatan = c
+        if 'tolok' in cl or 'kinerja' in cl:
+            col_tolok = c
+            
     for _, row in df_kegiatan.iterrows():
         srs_kegiatan = str(row.get(c_srs, "")).strip()
         
-        # --- PERBAIKAN: Hanya gabungkan teks dari 2 kolom utama ---
-        teks_kegiatan = str(row.get(col_kegiatan, ""))
-        teks_tolok = str(row.get(col_tolok, ""))
+        # Ambil teks dari kolom yang ditemukan
+        teks_kegiatan = str(row.get(col_kegiatan, "")) if col_kegiatan else ""
+        teks_tolok = str(row.get(col_tolok, "")) if col_tolok else ""
+        
+        # Gabungkan dan bersihkan tanda baca agar pencarian kata lebih bersih
         teks_gabungan = f"{teks_kegiatan} {teks_tolok}".lower()
-        # ----------------------------------------------------------
+        teks_bersih = re.sub(r'[^\w\s]', ' ', teks_gabungan)
         
         status = "Tidak Dievaluasi"
         skor = 0
@@ -1341,11 +1351,13 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
                 strategi = ref_match['Strategi'].iloc[0] if 'Strategi' in ref_match.columns else "Strategi N/A"
                 keywords_raw = ref_match['Keyword'].iloc[0] if 'Keyword' in ref_match.columns else ""
                 
-                daftar_kw = [k.strip().lower() for k in str(keywords_raw).split(',') if k.strip()]
+                # 2. Bersihkan keyword dan hilangkan duplikat menggunakan set()
+                daftar_kw = list(set([k.strip().lower() for k in str(keywords_raw).split(',') if k.strip()]))
                 
                 if daftar_kw:
-                    # Scan keyword
-                    matched = [kw for kw in daftar_kw if re.search(rf'\b{re.escape(kw)}\b', teks_gabungan)]
+                    # 3. Pencocokan Sub-string yang fleksibel (bisa mendeteksi kata berimbuhan)
+                    matched = [kw for kw in daftar_kw if kw in teks_bersih]
+                    
                     skor = (len(matched) / len(daftar_kw)) * 100
                     
                     if skor >= 70:
@@ -1356,8 +1368,8 @@ def evaluasi_kesesuaian_pergub(df_kegiatan, df_ref, c_srs):
                         status = "Tidak Sesuai"
                         
                     alasan = (
-                        f"[Dasar Kebijakan] {kebijakan} - {strategi}. "
-                        f"[Hasil Pencocokan] {len(matched)} dari {len(daftar_kw)} keyword ditemukan ({', '.join(matched) if matched else 'Tidak ada'}). "
+                        f"[Dasar Kebijakan] {kebijakan} - {strategi}. \n\n"
+                        f"[Hasil Pencocokan] {len(matched)} dari {len(daftar_kw)} keyword unik ditemukan ({', '.join(matched) if matched else 'Tidak ada'}). \n\n"
                         f"[Kesimpulan] Skor {skor:.0f}%, {status}."
                     )
                 else:

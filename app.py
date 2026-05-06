@@ -18,102 +18,95 @@ import requests
 from pathlib import Path
 
 # ============================================================
-# 0. FUNGSI HELPER - PERMANENT LAYER STORAGE (GOOGLE DRIVE)
+# 0. FUNGSI HELPER - PERMANENT LAYER STORAGE (GITHUB API)
 # ============================================================
+import requests
+import base64
+import json
+import os
+import time
+import hashlib
+import tempfile
+
 LAYERS_DIR = "layers"
 LAYERS_METADATA_FILE = "layers_metadata.json"
 
-# ⚠️ GANTI TEKS DI BAWAH INI DENGAN ID FOLDER DRIVE ANDA ⚠️
-DRIVE_FOLDER_ID = "1TOx3q1FKpietbdPLMFPZLPb0i5NoMk_s" 
-DRIVE_SERVICE = None
+def get_github_headers():
+    """Mengambil header otentikasi GitHub dari Secrets"""
+    token = st.secrets["github_config"]["token"]
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github.v3+json"
+    }
 
-def setup_google_drive():
-    """Setup Google Drive API untuk penyimpanan layer permanen"""
-    global DRIVE_SERVICE
-    try:
-        from google.oauth2.service_account import Credentials
-        from googleapiclient.discovery import build
+def get_github_api_url(file_path):
+    """Membuat URL endpoint API GitHub"""
+    owner = st.secrets["github_config"]["owner"]
+    repo = st.secrets["github_config"]["repo"]
+    return f"https://api.github.com/repos/{owner}/{repo}/contents/data_peta/{file_path}"
 
-        sa_info = dict(st.secrets["gcp_service_account"])
-        sa_info["private_key"] = sa_info["private_key"].replace("\\n", "\n")
+def get_github_raw_url(file_path):
+    """Membuat URL file mentah untuk diunduh/dibaca"""
+    owner = st.secrets["github_config"]["owner"]
+    repo = st.secrets["github_config"]["repo"]
+    branch = st.secrets["github_config"].get("branch", "main")
+    return f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/data_peta/{file_path}"
 
-        creds = Credentials.from_service_account_info(
-            sa_info,
-            scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.file']
-        )
-        DRIVE_SERVICE = build('drive', 'v3', credentials=creds)
-        return True
-    except Exception as e:
-        st.error(f"Gagal koneksi ke Google Drive: {e}")
-        return False
-
-def upload_layer_to_drive(filename, file_content):
-    """Upload file Peta ke Google Drive secara langsung"""
-    if not DRIVE_SERVICE or not DRIVE_FOLDER_ID: return None
-    try:
-        from googleapiclient.http import MediaIoBaseUpload
-        import io
+def upload_to_github(file_path, file_content_bytes, commit_message):
+    """Mengunggah (Commit) file ke GitHub via API"""
+    url = get_github_api_url(file_path)
+    headers = get_github_headers()
+    branch = st.secrets["github_config"].get("branch", "main")
+    
+    # Cek apakah file sudah ada (untuk mengambil nilai SHA yang wajib untuk proses update)
+    r_get = requests.get(url, headers=headers)
+    sha = r_get.json().get("sha") if r_get.status_code == 200 else None
+    
+    # Convert file ke Base64 (Syarat GitHub API)
+    content_b64 = base64.b64encode(file_content_bytes).decode("utf-8")
+    
+    data = {
+        "message": commit_message,
+        "content": content_b64,
+        "branch": branch
+    }
+    if sha:
+        data["sha"] = sha
         
-        fh = io.BytesIO(file_content)
-        media = MediaIoBaseUpload(fh, mimetype='application/octet-stream', resumable=True)
-        file_metadata = {'name': filename, 'parents': [DRIVE_FOLDER_ID]}
-        
-        file_result = DRIVE_SERVICE.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        return file_result.get('id')
-    except Exception as e:
-        st.error(f"Gagal Upload Peta: {e}")
-        return None
+    r_put = requests.put(url, headers=headers, json=data)
+    return r_put.status_code in [200, 201]
 
-def download_layer_from_drive(file_id):
-    if not DRIVE_SERVICE: return None
-    try:
-        import io
-        from googleapiclient.http import MediaIoBaseDownload
-        request = DRIVE_SERVICE.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        return fh.getvalue()
-    except Exception:
-        return None
-
-def delete_layer_from_drive(file_id):
-    if not DRIVE_SERVICE: return False
-    try:
-        DRIVE_SERVICE.files().delete(fileId=file_id).execute()
-        return True
-    except Exception:
-        return False
+def delete_from_github(file_path):
+    """Menghapus file dari GitHub via API"""
+    url = get_github_api_url(file_path)
+    headers = get_github_headers()
+    branch = st.secrets["github_config"].get("branch", "main")
+    
+    # Wajib ambil SHA dulu sebelum menghapus
+    r_get = requests.get(url, headers=headers)
+    if r_get.status_code == 200:
+        sha = r_get.json().get("sha")
+        data = {"message": f"Delete {file_path} via Dashboard", "sha": sha, "branch": branch}
+        r_del = requests.delete(url, headers=headers, json=data)
+        return r_del.status_code == 200
+    return False
 
 def init_layers_storage():
-    setup_google_drive()
-    if not os.path.exists(LAYERS_DIR): os.makedirs(LAYERS_DIR)
+    """Memastikan folder lokal sementara ada"""
+    if not os.path.exists(LAYERS_DIR):
+        os.makedirs(LAYERS_DIR)
 
 def load_layers_from_storage():
-    """Load metadata dari Drive agar tidak hilang saat aplikasi direstart"""
-    if DRIVE_SERVICE and DRIVE_FOLDER_ID:
-        try:
-            import io, json
-            from googleapiclient.http import MediaIoBaseDownload
-            # Cari file metadata di Drive
-            query = f"name='{LAYERS_METADATA_FILE}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
-            results = DRIVE_SERVICE.files().list(q=query, fields="files(id)").execute()
-            items = results.get('files', [])
-            
-            if items:
-                request = DRIVE_SERVICE.files().get_media(fileId=items[0]['id'])
-                fh = io.BytesIO()
-                downloader = MediaIoBaseDownload(fh, request)
-                done = False
-                while not done:
-                    _, done = downloader.next_chunk()
-                return json.loads(fh.getvalue().decode('utf-8'))
-        except Exception:
-            pass
-            
-    # Fallback jika di Drive belum ada
+    """Membaca daftar layer dari file JSON di GitHub"""
+    raw_url = get_github_raw_url(LAYERS_METADATA_FILE)
+    try:
+        r = requests.get(raw_url)
+        if r.status_code == 200:
+            return r.json()
+    except Exception as e:
+        pass
+    
+    # Jika di GitHub belum ada, coba baca dari lokal
     if os.path.exists(LAYERS_METADATA_FILE):
         try:
             with open(LAYERS_METADATA_FILE, "r") as f:
@@ -122,29 +115,17 @@ def load_layers_from_storage():
     return []
 
 def save_layers_to_storage(layers):
-    """Simpan metadata ke Drive agar permanen"""
-    import json
+    """Menyimpan daftar layer ke file JSON lalu mengunggahnya ke GitHub"""
+    # Simpan lokal dulu
     with open(LAYERS_METADATA_FILE, "w") as f:
         json.dump(layers, f, indent=2)
         
-    if DRIVE_SERVICE and DRIVE_FOLDER_ID:
-        try:
-            import io
-            from googleapiclient.http import MediaIoBaseUpload
-            json_bytes = json.dumps(layers, indent=2).encode('utf-8')
-            media = MediaIoBaseUpload(io.BytesIO(json_bytes), mimetype='application/json', resumable=True)
-            
-            # Update file jika ada, jika tidak buat baru
-            query = f"name='{LAYERS_METADATA_FILE}' and '{DRIVE_FOLDER_ID}' in parents and trashed=false"
-            results = DRIVE_SERVICE.files().list(q=query, fields="files(id)").execute()
-            items = results.get('files', [])
-            
-            if items:
-                DRIVE_SERVICE.files().update(fileId=items[0]['id'], media_body=media).execute()
-            else:
-                DRIVE_SERVICE.files().create(body={'name': LAYERS_METADATA_FILE, 'parents': [DRIVE_FOLDER_ID]}, media_body=media).execute()
-        except Exception:
-            pass
+    # Upload ke GitHub
+    json_bytes = json.dumps(layers, indent=2).encode('utf-8')
+    try:
+        upload_to_github(LAYERS_METADATA_FILE, json_bytes, "Update metadata layer peta")
+    except Exception as e:
+        st.error(f"Gagal sinkronisasi metadata ke GitHub: {e}")
 
 def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
     init_layers_storage()
@@ -152,51 +133,66 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
     existing_idx = next((i for i, l in enumerate(layers) if l['name'] == name), None)
     
     file_content = uploaded_file.read()
+    file_id = hashlib.md5(name.encode()).hexdigest()[:8]
+    filename = f"{file_id}_{int(time.time())}.{file_type}"
     
-    if DRIVE_SERVICE and DRIVE_FOLDER_ID:
-        file_id = upload_layer_to_drive(f"taru_layer_{name}.{file_type}", file_content)
-        if file_id:
-            import time
-            entry = {
-                'name': name, 'file_id': file_id,
-                'color_config': color_config, 'visible': True,
-                'type': file_type, 'storage': 'drive', 'created_at': time.time()
-            }
-        else: return None
+    # Upload fisik file peta ke GitHub
+    with st.spinner("Mengirim peta ke GitHub... (Tunggu sebentar)"):
+        success = upload_to_github(filename, file_content, f"Upload layer peta: {name}")
+    
+    if success:
+        entry = {
+            'name': name,
+            'filename': filename,
+            'color_config': color_config,
+            'visible': True,
+            'type': file_type,
+            'storage': 'github',
+            'created_at': time.time()
+        }
+        
+        # Hapus file lama di GitHub jika mengupdate
+        if existing_idx is not None:
+            old_layer = layers[existing_idx]
+            if old_layer.get('storage') == 'github':
+                delete_from_github(old_layer.get('filename'))
+            layers[existing_idx] = entry
+        else:
+            layers.append(entry)
+            
+        save_layers_to_storage(layers)
+        return entry
     else:
-        st.warning("ID Folder Drive belum diatur dengan benar.")
+        st.error("Gagal mengunggah file ke GitHub.")
         return None
-        
-    if existing_idx is not None:
-        if layers[existing_idx].get('storage') == 'drive':
-            delete_layer_from_drive(layers[existing_idx].get('file_id'))
-        layers[existing_idx] = entry
-    else:
-        layers.append(entry)
-        
-    save_layers_to_storage(layers)
-    return entry
 
 def delete_layer_from_storage(name):
     layers = load_layers_from_storage()
     existing = [l for l in layers if l['name'] == name]
+    
     if existing:
-        if existing[0].get('storage') == 'drive':
-            delete_layer_from_drive(existing[0].get('file_id'))
+        layer = existing[0]
+        if layer.get('storage') == 'github':
+            delete_from_github(layer.get('filename'))
+        
         layers = [l for l in layers if l['name'] != name]
         save_layers_to_storage(layers)
         return True
     return False
 
 def get_layer_file_path(layer):
-    if layer.get('storage') == 'drive' and DRIVE_SERVICE:
-        file_content = download_layer_from_drive(layer.get('file_id'))
-        if file_content:
-            import tempfile
-            ext = 'zip' if layer.get('type') == 'shp' else layer.get('type', 'kmz')
-            with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
-                tmp.write(file_content)
-                return tmp.name
+    """Mendownload peta dari GitHub ke memori lokal sementara untuk ditampilkan"""
+    if layer.get('storage') == 'github':
+        raw_url = get_github_raw_url(layer.get('filename'))
+        try:
+            r = requests.get(raw_url)
+            if r.status_code == 200:
+                ext = 'zip' if layer.get('type') == 'shp' else layer.get('type', 'kmz')
+                with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{ext}') as tmp:
+                    tmp.write(r.content)
+                    return tmp.name
+        except Exception:
+            return None
     return None
 
 

@@ -16,6 +16,7 @@ import time
 import hashlib
 import requests
 from pathlib import Path
+from folium.plugins import MeasureControl, LocateControl
 
 # ============================================================
 # 0. FUNGSI HELPER - PERMANENT LAYER STORAGE (GITHUB API)
@@ -2735,6 +2736,19 @@ try:
                     max_zoom=22,
                     control_scale=True
                 )
+
+                # 1. Menambahkan fitur pengukur jarak dan luas (Penggaris)
+                m_map.add_child(MeasureControl(
+                    position='topleft', 
+                    primary_length_unit='meters', 
+                    primary_area_unit='sqmeters'
+                ))
+
+                # 2. Menambahkan fitur pencari lokasi saat ini (GPS)
+                LocateControl(
+                    auto_start=False, 
+                    position='topleft'
+                ).add_to(m_map)
 
                 # 1. Tambahkan Basemap: Street (Default aktif)
                 folium.TileLayer(

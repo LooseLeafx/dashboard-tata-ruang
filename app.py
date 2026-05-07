@@ -2904,7 +2904,7 @@ try:
                             return c
                     return None
 
-                def _build_popup_html(row, cols, foto_col, lyr_name, drive_folder_id=''):
+                def _build_popup_html(row, cols, foto_col, lyr_name,''):
                     """Buat HTML popup dengan foto (jika ada) dan tabel atribut bersih."""
                     foto_html = ""
                     rows_html = ""

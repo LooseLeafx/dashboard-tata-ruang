@@ -97,27 +97,44 @@ def init_layers_storage():
         os.makedirs(LAYERS_DIR)
 
 def load_layers_from_storage():
-    """Membaca daftar layer dari file JSON di GitHub"""
-    raw_url = get_github_raw_url(LAYERS_METADATA_FILE)
+    """Membaca daftar layer secara INSTAN lewat jalur VIP (GitHub API)"""
+    import os
+    import json
+    
     try:
-        import time
-        # Trik Anti-Cache: Tambahkan parameter detik saat ini di belakang URL
-        # Contoh jadinya: .../layers_metadata.json?t=1715001234
-        raw_url_no_cache = f"{raw_url}?t={int(time.time())}"
+        import requests
+        import base64
+        import streamlit as st
         
-        r = requests.get(raw_url_no_cache)
+        # 1. Ambil kunci rahasia VIP Anda
+        token = st.secrets["github_config"]["token"]
+        owner = st.secrets["github_config"]["owner"]
+        repo = st.secrets["github_config"]["repo"]
+        branch = st.secrets["github_config"]["branch"]
+        
+        # 2. Akses langsung ke gudang inti GitHub (API)
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/contents/data_peta/layers_metadata.json?ref={branch}"
+        headers = {"Authorization": f"token {token}"}
+        
+        r = requests.get(api_url, headers=headers)
+        
+        # 3. Terjemahkan datanya (karena API mengirimnya dalam bentuk sandi Base64)
         if r.status_code == 200:
-            return r.json()
+            content_b64 = r.json()["content"]
+            content_str = base64.b64decode(content_b64).decode("utf-8")
+            return json.loads(content_str)
+            
     except Exception as e:
         pass
     
-    # Jika di GitHub belum ada, coba baca dari lokal
-    if os.path.exists(LAYERS_METADATA_FILE):
+    # 4. Jika internet mati/gagal, coba baca file dari lokal laptop
+    if os.path.exists("data_peta/layers_metadata.json"):
         try:
-            import json
-            with open(LAYERS_METADATA_FILE, "r") as f:
+            with open("data_peta/layers_metadata.json", "r") as f:
                 return json.load(f)
-        except: pass
+        except: 
+            pass
+            
     return []
 
 def save_layers_to_storage(layers):

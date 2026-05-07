@@ -10,5 +10,17 @@
     "type": "kmz",
     "storage": "github",
     "created_at": 1778075413.2994676
+  },
+  {
+    "name": "APJ Provinsi T.A 2024",
+    "filename": "b500357a_1778117357.kmz",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Kategorikal"
+    },
+    "visible": true,
+    "type": "kmz",
+    "storage": "github",
+    "created_at": 1778117358.3079467
   }
 ]

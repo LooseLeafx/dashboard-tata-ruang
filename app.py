@@ -2904,7 +2904,7 @@ try:
                             return c
                     return None
 
-                def _build_popup_html(row, cols, foto_col, lyr_name,''):
+                def _build_popup_html(row, cols, foto_col, lyr_name, drive_folder_id=''):
                     """Buat HTML popup dengan foto (jika ada) dan tabel atribut bersih."""
                     foto_html = ""
                     rows_html = ""
@@ -3012,7 +3012,7 @@ try:
                                 f_color = folium_color_map.get(pin_clr.lower(), 'red')
                                 row_cols  = _row_clean_fields(row, clean_cols)
                                 foto_col  = _detect_foto_col(row, row_cols)
-                                popup_html = _build_popup_html(row, row_cols, foto_col, lyr_name, DRIVE_FOLDER_ID or '')
+                                popup_html = _build_popup_html(row, row_cols, foto_col, lyr_name, '')
                                 tip_val = str(row.get('Name', row.get(row_cols[0], lyr_name) if row_cols else lyr_name))
                                 for pt in pts:
                                     folium.Marker(

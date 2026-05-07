@@ -3416,22 +3416,9 @@ document.addEventListener('DOMContentLoaded', function() {
     with tab_data:
         st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-        hdr1, hdr2 = st.columns([3, 1])
-        with hdr2:
-            import io as _io3
-            _buf3 = _io3.BytesIO()
-            df.to_excel(_buf3, index=False, engine='openpyxl')
-            st.download_button(
-                "⬇️ Export Excel",
-                data=_buf3.getvalue(),
-                file_name="taru_istimewa_data.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
-
+        # 1. ── AMBIL INPUT PENCARIAN DULU ──
         _prefill_val = st.session_state.pop("data_search_prefill", "")
-                
-        # ── KOTAK PENCARIAN ──
+        
         search_q = st.text_input(
             "Cari",
             placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
@@ -3440,28 +3427,43 @@ document.addEventListener('DOMContentLoaded', function() {
             value=_prefill_val
         )
 
+        # 2. ── TERAPKAN FILTER PENCARIAN ──
         df_show = df.copy()
-        
-        # ── Terapkan Pencarian Teks ──
         if search_q:
             mask = df_show.apply(
                 lambda col: col.astype(str).str.contains(
                     search_q, case=False, na=False)
             ).any(axis=1)
             df_show = df_show[mask]
-            df_show = df_show[mask]
 
-        st.markdown(
-            f"<p style='font-size:0.69rem;color:#7a9a8a;margin:4px 0 8px;'>"
-            f"Menampilkan {len(df_show):,} dari {len(df):,} data</p>",
-            unsafe_allow_html=True
-        )
+        # 3. ── TAMPILKAN HEADER & TOMBOL EXPORT (Gunakan df_show) ──
+        hdr1, hdr2 = st.columns([3, 1])
+        
+        with hdr1:
+            st.markdown(
+                f"<p style='font-size:0.69rem;color:#7a9a8a;margin:4px 0 8px;'>"
+                f"Menampilkan {len(df_show):,} dari {len(df):,} data</p>",
+                unsafe_allow_html=True
+            )
 
+        with hdr2:
+            import io as _io3
+            _buf3 = _io3.BytesIO()
+            # PERBAIKAN: Gunakan df_show, bukan df
+            df_show.to_excel(_buf3, index=False, engine='openpyxl') 
+            st.download_button(
+                "⬇️ Export Excel",
+                data=_buf3.getvalue(),
+                file_name=f"taru_istimewa_{search_q}.xlsx" if search_q else "taru_istimewa_data.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+
+        # 4. ── RENDER TABEL HTML ──
         df_display = df_show.copy()
         df_display['Pagu Anggaran'] = df_display['Pagu Anggaran'].apply(fmt_rp_full)
 
-        # Wrap text: render sebagai HTML table dengan word-wrap agar teks panjang terbaca
-        # Tentukan lebar kolom default berdasarkan tipe konten
+        # (Mulai dari sini ke bawah, kodenya sama persis dengan milik Anda)
         col_widths_default = {}
         for col in df_display.columns:
             if col == 'Pagu Anggaran':
@@ -3475,11 +3477,9 @@ document.addEventListener('DOMContentLoaded', function() {
             else:
                 col_widths_default[col] = 150
 
-        # Initialize session state untuk custom column widths
         if 'col_widths_custom' not in st.session_state:
             st.session_state.col_widths_custom = col_widths_default.copy()
 
-        # Expander untuk pengaturan lebar kolom
         with st.expander("⚙️  Sesuaikan Lebar Kolom", expanded=False):
             col_adjust_cols = st.columns([1, 1])
             with col_adjust_cols[0]:
@@ -3498,7 +3498,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     label_visibility="collapsed"
                 )
 
-            # Update semua kolom jika slider global berubah
             if width_all != 100:
                 for col in st.session_state.col_widths_custom:
                     st.session_state.col_widths_custom[col] = int(
@@ -3507,7 +3506,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
             st.markdown("<hr style='margin:8px 0;'>", unsafe_allow_html=True)
 
-            # Slider untuk setiap kolom - dibuat dalam 3 kolom
             cols_slider = st.columns(3)
             for idx, col in enumerate(df_display.columns):
                 col_idx = idx % 3
@@ -3523,23 +3521,20 @@ document.addEventListener('DOMContentLoaded', function() {
                     )
                     st.session_state.col_widths_custom[col] = new_width
 
-        # Konversi ke pixel untuk digunakan di HTML
         col_widths = {col: f"{width}px" for col, width in st.session_state.col_widths_custom.items()}
 
-        # Buat colgroup untuk set lebar kolom yang konsisten
         colgroup_html = "".join(
             f"<col style='width:{col_widths.get(c, '120px')};'>"
             for c in df_display.columns
         )
 
-        # Buat header
         th_cells = "".join(
             "<th style='position:sticky;top:0;background:#0b3327;color:#fff;"
             "font-size:0.72rem;font-weight:700;padding:8px 10px;text-align:left;"
             "width:" + col_widths.get(c, "120px") + ";'>" + c + "</th>"
             for c in df_display.columns
         )
-        # Buat baris data
+        
         tr_rows = ""
         for ridx, row in df_display.iterrows():
             bg = "#ffffff" if ridx % 2 == 0 else "#f7fdf9"

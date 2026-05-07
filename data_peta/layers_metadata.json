@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Batas Administrasi Kabupaten",
+    "filename": "5e43c6e7_1778075411.kmz",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Kategorikal"
+    },
+    "visible": true,
+    "type": "kmz",
+    "storage": "github",
+    "created_at": 1778075413.2994676
+  },
+  {
+    "name": "APJ Provinsi T.A 2024",
+    "filename": "b500357a_1778115287.kmz",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Kategorikal"
+    },
+    "visible": true,
+    "type": "kmz",
+    "storage": "github",
+    "created_at": 1778115289.1753893
+  }
+]

@@ -22,5 +22,17 @@
     "type": "kmz",
     "storage": "github",
     "created_at": 1778117358.3079467
+  },
+  {
+    "name": "APJ Provinsi T.A 2025",
+    "filename": "00b83e11_1778118266.kmz",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Kategorikal"
+    },
+    "visible": true,
+    "type": "kmz",
+    "storage": "github",
+    "created_at": 1778118267.8962412
   }
 ]

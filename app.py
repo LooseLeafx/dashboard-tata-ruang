@@ -100,7 +100,12 @@ def load_layers_from_storage():
     """Membaca daftar layer dari file JSON di GitHub"""
     raw_url = get_github_raw_url(LAYERS_METADATA_FILE)
     try:
-        r = requests.get(raw_url)
+        import time
+        # Trik Anti-Cache: Tambahkan parameter detik saat ini di belakang URL
+        # Contoh jadinya: .../layers_metadata.json?t=1715001234
+        raw_url_no_cache = f"{raw_url}?t={int(time.time())}"
+        
+        r = requests.get(raw_url_no_cache)
         if r.status_code == 200:
             return r.json()
     except Exception as e:
@@ -109,6 +114,7 @@ def load_layers_from_storage():
     # Jika di GitHub belum ada, coba baca dari lokal
     if os.path.exists(LAYERS_METADATA_FILE):
         try:
+            import json
             with open(LAYERS_METADATA_FILE, "r") as f:
                 return json.load(f)
         except: pass

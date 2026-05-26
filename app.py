@@ -160,9 +160,10 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
     file_id = hashlib.md5(name.encode()).hexdigest()[:8]
     filename = f"{file_id}_{int(time.time())}.{file_type}"
 
-    # --- Ekstrak Kolom Atribut Peta ---
+# --- Ekstrak Kolom & Kategori Atribut Peta ---
     import tempfile
     columns_list = []
+    unique_vals = {} # Siapkan wadah untuk nilai kategori
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_type}') as tmp:
             tmp.write(file_content)
@@ -173,6 +174,12 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
                     'lookat','camera','address','phonenumber','fid','objectid',
                     'shape_leng','shape_area','shape_le_1'}
         columns_list = [c for c in gdf_tmp.columns if c != 'geometry' and c.lower() not in KML_SKIP]
+        
+        # Tambahan: Ambil nilai unik dari setiap kolom (Maks 50 agar file tidak berat)
+        for c in columns_list:
+            uv = gdf_tmp[c].dropna().astype(str).unique().tolist()
+            if len(uv) <= 50:
+                unique_vals[c] = uv
     except:
         pass
     # ----------------------------------
@@ -190,7 +197,8 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
             'type': file_type,
             'storage': 'github',
             'created_at': time.time(),
-            'columns': columns_list
+            'columns': columns_list,
+            'unique_vals': unique_vals
         }
         
         # Hapus file lama di GitHub jika mengupdate
@@ -2700,18 +2708,39 @@ try:
                             cols_tmp = layer.get('columns', [])
                             if cols_tmp:
                                 cur_attr = cc.get('attribute', cols_tmp[0])
-                                new_attr = st.selectbox(
-                                    "Atribut", cols_tmp, 
-                                    index=cols_tmp.index(cur_attr) if cur_attr in cols_tmp else 0,
-                                    key="layer_attr_" + str(i),
-                                    label_visibility="collapsed"
-                                )
-                                if new_attr != cur_attr:
-                                    st.session_state.extra_layers[i]['color_config']['attribute'] = new_attr
-                                    save_layers_to_storage(st.session_state.extra_layers)
-                                    st.rerun()
+                                
+                                # Bagi lc5 menjadi dua (dropdown dan tombol palet)
+                                a_col, p_col = st.columns([3, 1])
+                                with a_col:
+                                    new_attr = st.selectbox("Atribut", cols_tmp, index=cols_tmp.index(cur_attr) if cur_attr in cols_tmp else 0, key="layer_attr_" + str(i), label_visibility="collapsed")
+                                    if new_attr != cur_attr:
+                                        st.session_state.extra_layers[i]['color_config']['attribute'] = new_attr
+                                        save_layers_to_storage(st.session_state.extra_layers)
+                                        st.rerun()
+                                
+                                with p_col:
+                                    uv_dict = layer.get('unique_values', {})
+                                    if cur_attr in uv_dict:
+                                        with st.popover("🎨"):
+                                            st.markdown("<b style='font-size:0.75rem;'>Warna per Kategori</b>", unsafe_allow_html=True)
+                                            custom_cols = cc.get('custom_colors', {})
+                                            pal_colors = PALETTES.get(cc.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
+                                            
+                                            updated = False
+                                            for idx, val in enumerate(uv_dict[cur_attr]):
+                                                val_str = str(val)
+                                                default_c = pal_colors[idx % len(pal_colors)]
+                                                current_c = custom_cols.get(val_str, default_c)
+                                                new_c = st.color_picker(val_str, current_c, key=f"cp_{i}_{val_str}")
+                                                if new_c != current_c:
+                                                    custom_cols[val_str] = new_c
+                                                    updated = True
+                                            if updated:
+                                                st.session_state.extra_layers[i]['color_config']['custom_colors'] = custom_cols
+                                                save_layers_to_storage(st.session_state.extra_layers)
+                                                st.rerun()
                             else:
-                                st.markdown("<span style='font-size:0.7rem;color:#e74c3c;'>Re-upload peta</span>", unsafe_allow_html=True)
+                                st.markdown("<span style='font-size:0.7rem;color:#e74c3c;'>Re-upload</span>", unsafe_allow_html=True)
                     
                     with lc6:
                         if st.button("🗑️", key="del_layer_" + str(i), help="Hapus " + layer['name']):
@@ -2893,6 +2922,15 @@ try:
                 )
                 choropleth.add_to(m_map)
 
+                gdf_m['Pagu_Display'] = gdf_m['Pagu_Total'].apply(fmt_rp_full)
+                choropleth.geojson.add_child(
+                    folium.features.GeoJsonTooltip(
+                        fields=['Name', 'Pagu_Display', 'Jumlah_Kegiatan'],
+                        aliases=['SRS:', 'Total Pagu:', 'Jumlah Kegiatan:'],
+                        localize=False
+                    )
+                )
+
                 # Sembunyikan legenda bawaan (hapus macro_element_div dari control)
                 for key in list(choropleth._children.keys()):
                     if 'color_map' in key:
@@ -2933,6 +2971,36 @@ try:
                         "<div style='color:#777;font-size:0.62rem;'>" + _r + "</div>"
                         "</div></div>"
                     )
+
+                # --- TAMBAHAN: LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
+                for layer in st.session_state.extra_layers:
+                    if layer['visible']: # Hanya masukkan legenda jika layer sedang nyala (👁️)
+                        cc_l = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
+                        legend_rows += f"<div class='taru-legend-title' style='margin-top:10px; border-top:1px solid #eee; padding-top:8px;'>{layer['name']}</div>"
+                        
+                        if cc_l['mode'] == 'single':
+                            legend_rows += (
+                                f"<div style='display:flex;align-items:center;gap:8px;'>"
+                                f"<div style='background:{cc_l['color']};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                                f"<div style='color:#555;font-size:0.7rem;'>Semua area</div></div>"
+                            )
+                        else:
+                            attr = cc_l.get('attribute', 'Kategori')
+                            custom_cols = cc_l.get('custom_colors', {})
+                            uv_dict = layer.get('unique_values', {})
+                            
+                            if attr in uv_dict:
+                                pal_colors = PALETTES.get(cc_l.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
+                                for idx, val in enumerate(uv_dict[attr]):
+                                    val_str = str(val)
+                                    c = custom_cols.get(val_str, pal_colors[idx % len(pal_colors)])
+                                    legend_rows += (
+                                        f"<div style='display:flex;align-items:center;gap:8px;margin-top:3px;'>"
+                                        f"<div style='background:{c};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                                        f"<div style='color:#555;font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;' title='{val_str}'>{val_str}</div></div>"
+                                    )
+                # ------------------------------------
+
                 legend_html = (
                     "<style>"
                     ".taru-legend-ctrl {"
@@ -2981,20 +3049,6 @@ try:
                             },
                             name='SRS Dipilih'
                         ).add_to(m_map)
-
-                # Tooltip SRS (tanpa nama di layer control)
-                gdf_m['Pagu_Display'] = gdf_m['Pagu_Total'].apply(fmt_rp_full)
-                folium.GeoJson(
-                    gdf_m,
-                    tooltip=folium.GeoJsonTooltip(
-                        fields=['Name', 'Pagu_Display', 'Jumlah_Kegiatan'],
-                        aliases=['SRS:', 'Total Pagu:', 'Jumlah Kegiatan:'],
-                        localize=False
-                    ),
-                    style_function=lambda x: {'fillOpacity': 0, 'weight': 0},
-                    show=True,
-                    control=False   # <-- tidak muncul di LayerControl
-                ).add_to(m_map)
 
                 # ── Render Layer Tambahan ──
 
@@ -3109,11 +3163,13 @@ try:
                         else:
                             pal_nm     = cc_l.get('palette', list(PALETTES.keys())[0])
                             pal_colors = PALETTES.get(pal_nm, list(PALETTES.values())[0])
-                            cat_col = cc_l.get('attribute', 'Name' if 'Name' in gdf_layer.columns else (clean_cols[0] if clean_cols else None))
-                            uniq_names = gdf_layer[cat_col].dropna().unique().tolist() if cat_col else []
-                            cmap_cat   = {nm: pal_colors[i % len(pal_colors)] for i, nm in enumerate(uniq_names)}
+                            cat_col    = cc_l.get('attribute', 'Name' if 'Name' in gdf_layer.columns else (clean_cols[0] if clean_cols else None))
+                            uniq_names = gdf_layer[cat_col].dropna().astype(str).unique().tolist() if cat_col else []
+                            
+                            # --- Baca Warna Custom yang disetting pengguna ---
+                            custom_cols = cc_l.get('custom_colors', {})
+                            cmap_cat   = {nm: custom_cols.get(nm, pal_colors[i % len(pal_colors)]) for i, nm in enumerate(uniq_names)}
                             clr        = pal_colors[0]
-
                         geom_types = gdf_layer.geometry.geom_type.dropna().unique()
                         is_point   = all(gt in ('Point', 'MultiPoint') for gt in geom_types)
                         is_line    = all(gt in ('LineString', 'MultiLineString') for gt in geom_types)

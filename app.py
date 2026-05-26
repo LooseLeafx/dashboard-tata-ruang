@@ -2528,7 +2528,7 @@ try:
             st.markdown(
                 "<p style='font-size:0.78rem;color:#555;margin-bottom:10px;'>"
                 "Upload file KMZ/KML/SHP."
-                "berdasarkan field <b>Name</b> pada file.</p>",
+                "Beri nama layer berdasarkan field <b>Name</b> pada file.</p>",
                 unsafe_allow_html=True
             )
 
@@ -2853,7 +2853,7 @@ try:
                         label_visibility="collapsed"
                     )
                 with _sc2:
-                    btn_search_loc = st.button("🔍 Cari", key="btn_search_loc", use_container_width=True)
+                    btn_search_loc = st.button("Cari", key="btn_search_loc", use_container_width=True)
 
                 _bm = st.session_state.get("basemap_choice", "street")
                 m_map = folium.Map(
@@ -2908,6 +2908,10 @@ try:
                         name="Street", show=True, control=False,
                     ).add_to(m_map)
 
+                # 1. Buat kolom teks rupiahnya DULU sebelum peta digambar
+                gdf_m['Pagu_Display'] = gdf_m['Pagu_Total'].apply(fmt_rp_full)
+
+                # 2. Baru gambar petanya menggunakan data yang sudah lengkap
                 choropleth = folium.Choropleth(
                     geo_data=gdf_m,
                     data=gdf_m,
@@ -2921,6 +2925,15 @@ try:
                     name='Sebaran Pagu per SRS',
                 )
                 choropleth.add_to(m_map)
+
+                # 3. Tempelkan informasi (tooltip) ke peta tersebut
+                choropleth.geojson.add_child(
+                    folium.features.GeoJsonTooltip(
+                        fields=['Name', 'Pagu_Display', 'Jumlah_Kegiatan'],
+                        aliases=['SRS:', 'Total Pagu:', 'Jumlah Kegiatan:'],
+                        localize=False
+                    )
+                )
 
                 gdf_m['Pagu_Display'] = gdf_m['Pagu_Total'].apply(fmt_rp_full)
                 choropleth.geojson.add_child(
@@ -3586,7 +3599,7 @@ document.addEventListener('DOMContentLoaded', function() {
             )
 
         with col_btn:
-            tombol_cari = st.button("🔍 Cari", use_container_width=True)
+            tombol_cari = st.button("Cari", use_container_width=True)
 
         # 2. ── TERAPKAN FILTER PENCARIAN ──
         df_show = df.copy()

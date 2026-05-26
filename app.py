@@ -531,7 +531,7 @@ html, body, [class*="css"] {
     font-weight: 600 !important;
     font-size: 0.9rem !important;
     padding: 8px 12px !important;
-    margin-top: 6px !important;
+    margin-top: 0px !important;
     display: block !important;
     background: #34495e !important;
     color: #fff !important;
@@ -2507,6 +2507,10 @@ try:
             "Netral Abu":   ["#252525","#525252","#737373","#969696","#bdbdbd"],
         }
 
+        # Memberi jarak kosong dari atas
+        st.markdown("<div style='height: 15px;'></div>", unsafe_allow_html=True)
+        
+        # ── Tombol Popover Sejajar (Kiri - Kanan) ──
         btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 4])
         
         pop_upload = btn_col1.popover("🗂️ Upload Peta", use_container_width=True)
@@ -2515,12 +2519,13 @@ try:
         with pop_upload:
             st.markdown(
                 "<p style='font-size:0.78rem;color:#555;margin-bottom:10px;'>"
-                "Upload file KMZ/KML/SHP. Pilih warna seragam atau warna per-kategori "
+                "Upload file KMZ/KML/SHP."
                 "berdasarkan field <b>Name</b> pada file.</p>",
                 unsafe_allow_html=True
             )
 
-            up_col1, up_col2, up_col3 = st.columns([3, 1, 1])
+            # Baris 1: Nama Layer & Mode Warna (Diberi ruang lebih pas)
+            up_col1, up_col2 = st.columns([2, 1.2])
             with up_col1:
                 layer_name_input = st.text_input(
                     "Nama Layer",
@@ -2535,12 +2540,14 @@ try:
                     key="new_layer_color_mode",
                     label_visibility="collapsed"
                 )
-            with up_col3:
-                uploaded_layer = st.file_uploader(
-                    "Upload KMZ/KML/SHP", type=["kmz", "kml", "zip"],
-                    key="layer_uploader",
-                    label_visibility="collapsed"
-                )
+            
+            # Baris 2: File Uploader dibiarkan membentang penuh (Full Width)
+            uploaded_layer = st.file_uploader(
+                "Upload KMZ/KML/SHP", type=["kmz", "kml", "zip"],
+                key="layer_uploader",
+                label_visibility="collapsed"
+            )
+
             st.markdown(
                 "<p style='font-size:0.68rem;color:#aaa;margin:-4px 0 6px 0;'>"                "💡 Format: <b>KMZ</b>, <b>KML</b>, atau <b>SHP</b> (dikemas dalam <b>ZIP</b> "                "bersama file .dbf, .shx, dll)</p>",
                 unsafe_allow_html=True
@@ -2630,7 +2637,7 @@ try:
                     dot_clr = (cc['color'] if cc['mode'] == 'single'
                                else PALETTES.get(cc.get('palette', ''),
                                                  ['#27ae60'])[0])
-                    lc1, lc2, lc3, lc4, lc5, lc6 = st.columns([2.5, 0.7, 1, 1.2, 1.5, 0.7])
+                    lc1, lc2, lc3, lc4, lc5, lc6 = st.columns([2.5, 0.5, 0.8, 1.2, 1.8, 0.6])
                     with lc1:
                         st.markdown(
                             "<div style='font-size:0.78rem;color:#1a3a2a;padding-top:6px;'>"
@@ -2720,7 +2727,7 @@ try:
 
         # ── Menu Geoprocessing (Buffer) di dalam Popover ──
         with pop_buffer:
-            st.markdown("<p style='font-size:0.78rem;color:#555;'>Buat radius/buffer dari peta yang sudah ada di daftar.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size:0.78rem;color:#555;'>Buat radius/buffer (dalam satuan meter)</p>", unsafe_allow_html=True)
 
             if st.session_state.extra_layers:
                 layer_names = [l['name'] for l in st.session_state.extra_layers]
@@ -3523,7 +3530,6 @@ document.addEventListener('DOMContentLoaded', function() {
             )
 
         with col_btn:
-            st.write("") # Sekadar spasi agar posisi sejajar
             tombol_cari = st.button("🔍 Cari", use_container_width=True)
 
         # 2. ── TERAPKAN FILTER PENCARIAN ──

@@ -159,6 +159,23 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
     file_content = uploaded_file.read()
     file_id = hashlib.md5(name.encode()).hexdigest()[:8]
     filename = f"{file_id}_{int(time.time())}.{file_type}"
+
+    # --- Ekstrak Kolom Atribut Peta ---
+    import tempfile
+    columns_list = []
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_type}') as tmp:
+            tmp.write(file_content)
+            tmp_path = tmp.name
+        gdf_tmp = read_layer_geodataframe(tmp_path, file_type)
+        KML_SKIP = {'timestamp','begin','end','altitudemode','tessellate','extrude',
+                    'visibility','draworder','icon','description','styleurl','snippet',
+                    'lookat','camera','address','phonenumber','fid','objectid',
+                    'shape_leng','shape_area','shape_le_1'}
+        columns_list = [c for c in gdf_tmp.columns if c != 'geometry' and c.lower() not in KML_SKIP]
+    except:
+        pass
+    # ----------------------------------
     
     # Upload fisik file peta ke GitHub
     with st.spinner("Mengirim peta ke GitHub... (Tunggu sebentar)"):
@@ -169,10 +186,11 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
             'name': name,
             'filename': filename,
             'color_config': color_config,
-            'visible': True,
+            'visible': False,
             'type': file_type,
             'storage': 'github',
-            'created_at': time.time()
+            'created_at': time.time(),
+            'columns': columns_list
         }
         
         # Hapus file lama di GitHub jika mengupdate
@@ -229,6 +247,9 @@ def read_layer_geodataframe(layer_path, layer_type):
     """
     import zipfile, tempfile, re
     ltype = layer_type or 'kmz'
+
+    if ltype == 'geojson':
+        return gpd.read_file(layer_path)
 
     if ltype == 'shp':
         with zipfile.ZipFile(layer_path, 'r') as z:
@@ -2486,7 +2507,12 @@ try:
             "Netral Abu":   ["#252525","#525252","#737373","#969696","#bdbdbd"],
         }
 
-        with st.expander("🗂️ Upload Peta", expanded=False):
+        btn_col1, btn_col2, _ = st.columns([1.5, 1.5, 4])
+        
+        pop_upload = btn_col1.popover("🗂️ Upload Peta", use_container_width=True)
+        pop_buffer = btn_col2.popover("🛠️ Geoprocessing", use_container_width=True)
+
+        with pop_upload:
             st.markdown(
                 "<p style='font-size:0.78rem;color:#555;margin-bottom:10px;'>"
                 "Upload file KMZ/KML/SHP. Pilih warna seragam atau warna per-kategori "
@@ -2604,7 +2630,7 @@ try:
                     dot_clr = (cc['color'] if cc['mode'] == 'single'
                                else PALETTES.get(cc.get('palette', ''),
                                                  ['#27ae60'])[0])
-                    lc1, lc2, lc3, lc4, lc5 = st.columns([3, 1, 1, 1, 1])
+                    lc1, lc2, lc3, lc4, lc5, lc6 = st.columns([2.5, 0.7, 1, 1.2, 1.5, 0.7])
                     with lc1:
                         st.markdown(
                             "<div style='font-size:0.78rem;color:#1a3a2a;padding-top:6px;'>"
@@ -2663,11 +2689,26 @@ try:
                                 save_layers_to_storage(st.session_state.extra_layers)
                                 st.rerun()
                     with lc5:
-                        if st.button("🗑️", key="del_layer_" + str(i),
-                                     help="Hapus " + layer['name']):
-                            # Hapus dari penyimpanan permanen
+                        if cc['mode'] == 'palette':
+                            cols_tmp = layer.get('columns', [])
+                            if cols_tmp:
+                                cur_attr = cc.get('attribute', cols_tmp[0])
+                                new_attr = st.selectbox(
+                                    "Atribut", cols_tmp, 
+                                    index=cols_tmp.index(cur_attr) if cur_attr in cols_tmp else 0,
+                                    key="layer_attr_" + str(i),
+                                    label_visibility="collapsed"
+                                )
+                                if new_attr != cur_attr:
+                                    st.session_state.extra_layers[i]['color_config']['attribute'] = new_attr
+                                    save_layers_to_storage(st.session_state.extra_layers)
+                                    st.rerun()
+                            else:
+                                st.markdown("<span style='font-size:0.7rem;color:#e74c3c;'>Re-upload peta</span>", unsafe_allow_html=True)
+                    
+                    with lc6:
+                        if st.button("🗑️", key="del_layer_" + str(i), help="Hapus " + layer['name']):
                             delete_layer_from_storage(layer['name'])
-                            # Update session state dari storage
                             st.session_state.extra_layers = load_layers_from_storage()
                             st.rerun()
             else:
@@ -2676,6 +2717,56 @@ try:
                     "Belum ada layer tambahan.</p>",
                     unsafe_allow_html=True
                 )
+
+        # ── Menu Geoprocessing (Buffer) di dalam Popover ──
+        with pop_buffer:
+            st.markdown("<p style='font-size:0.78rem;color:#555;'>Buat radius/buffer dari peta yang sudah ada di daftar.</p>", unsafe_allow_html=True)
+
+            if st.session_state.extra_layers:
+                layer_names = [l['name'] for l in st.session_state.extra_layers]
+
+                buf_c1, buf_c2, buf_c3 = st.columns([2, 1, 1.2])
+                with buf_c1:
+                    sel_buf_layer = st.selectbox("Pilih Layer", layer_names, label_visibility="collapsed")
+                with buf_c2:
+                    buf_dist = st.number_input("Jarak (Meter)", min_value=1, value=50, step=10, label_visibility="collapsed")
+                with buf_c3:
+                    btn_do_buffer = st.button("🔄 Buat Buffer", use_container_width=True)
+
+                if btn_do_buffer:
+                    with st.spinner(f"Menghitung Buffer {buf_dist} meter..."):
+                        target_layer = next(l for l in st.session_state.extra_layers if l['name'] == sel_buf_layer)
+                        l_path = get_layer_file_path(target_layer)
+                        if l_path:
+                            try:
+                                # 1. Baca data
+                                gdf_target = read_layer_geodataframe(l_path, target_layer.get('type', 'kmz'))
+
+                                # 2. Proses Buffer (Ubah ke meter -> buffer -> kembalikan ke koordinat GPS)
+                                gdf_proj = gdf_target.to_crs(epsg=3857)
+                                gdf_proj['geometry'] = gdf_proj.geometry.buffer(buf_dist)
+                                gdf_final = gdf_proj.to_crs(epsg=4326)
+
+                                # 3. Konversi ke GeoJSON Bytes
+                                geojson_bytes = gdf_final.to_json().encode('utf-8')
+
+                                # 4. Menyimpan hasil buffer sebagai layer baru
+                                class MockFile:
+                                    def read(self): return geojson_bytes
+                                    @property
+                                    def name(self): return "buffer.geojson"
+
+                                new_name = f"Buffer {buf_dist}m - {sel_buf_layer}"
+                                color_cfg = {"mode": "single", "color": "#3498db"} # Default biru
+
+                                add_layer_to_storage(new_name, MockFile(), color_cfg, file_type='geojson')
+                                st.session_state.extra_layers = load_layers_from_storage()
+                                st.success(f"Layer '{new_name}' berhasil ditambahkan!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Gagal membuat buffer: {e}")
+            else:
+                st.info("Upload peta terlebih dahulu untuk menggunakan fitur Buffer.")
 
         # ── Session state untuk SRS yang dipilih dari tabel ──
 
@@ -3011,7 +3102,7 @@ try:
                         else:
                             pal_nm     = cc_l.get('palette', list(PALETTES.keys())[0])
                             pal_colors = PALETTES.get(pal_nm, list(PALETTES.values())[0])
-                            cat_col    = 'Name' if 'Name' in gdf_layer.columns else (clean_cols[0] if clean_cols else None)
+                            cat_col = cc_l.get('attribute', 'Name' if 'Name' in gdf_layer.columns else (clean_cols[0] if clean_cols else None))
                             uniq_names = gdf_layer[cat_col].dropna().unique().tolist() if cat_col else []
                             cmap_cat   = {nm: pal_colors[i % len(pal_colors)] for i, nm in enumerate(uniq_names)}
                             clr        = pal_colors[0]
@@ -3419,13 +3510,21 @@ document.addEventListener('DOMContentLoaded', function() {
         # 1. ── AMBIL INPUT PENCARIAN DULU ──
         _prefill_val = st.session_state.pop("data_search_prefill", "")
         
-        search_q = st.text_input(
-            "Cari",
-            placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
-            key="data_search",
-            label_visibility="collapsed",
-            value=_prefill_val
-        )
+    # ── KOTAK PENCARIAN DENGAN TOMBOL ──
+        col_input, col_btn = st.columns([4, 1])
+
+        with col_input:
+            search_q = st.text_input(
+                "Cari",
+                placeholder="Cari kata kunci (nama kegiatan, OPD, detail...)",
+                key="data_search",
+                label_visibility="collapsed",
+                value=_prefill_val
+            )
+
+        with col_btn:
+            st.write("") # Sekadar spasi agar posisi sejajar
+            tombol_cari = st.button("🔍 Cari", use_container_width=True)
 
         # 2. ── TERAPKAN FILTER PENCARIAN ──
         df_show = df.copy()

@@ -40,7 +40,8 @@
     "filename": "aaee4bd7_1780235286.shp",
     "color_config": {
       "mode": "palette",
-      "palette": "Hijau Alam"
+      "palette": "Hijau Alam",
+      "attribute": "Kewenangan"
     },
     "visible": false,
     "type": "shp",

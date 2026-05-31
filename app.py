@@ -2992,12 +2992,13 @@ try:
                     )
 
                 # --- 1. LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
+                # Semua div legenda dimulai dengan display:none — JavaScript yang mengontrol
+                # visibilitasnya berdasarkan status checkbox Leaflet secara real-time.
                 legend_rows_extra = ""
                 for layer in st.session_state.extra_layers:
                     safe_id = "".join([c for c in layer['name'] if c.isalnum()])
-                    disp = "block" if layer['visible'] else "none"
-                    
-                    legend_rows_extra += f"<div id='leg_{safe_id}' style='display:{disp};'>"
+                    # FIX: Selalu mulai dengan display:none — JS yang akan show/hide
+                    legend_rows_extra += f"<div id='leg_{safe_id}' style='display:none;'>"
                     legend_rows_extra += f"<div class='taru-legend-title' style='margin-top:10px; border-top:1px solid #eee; padding-top:8px;'>{layer['name']}</div>"
                     
                     cc_l = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
@@ -3010,7 +3011,6 @@ try:
                     else:
                         attr = cc_l.get('attribute', 'Kategori')
                         custom_cols = cc_l.get('custom_colors', {})
-                        # Menggunakan 'unique_vals' agar tidak error
                         uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
                         
                         if attr in uv_dict:
@@ -3048,14 +3048,20 @@ try:
                     "</style>"
                     "<div class='taru-legend-ctrl'>"
                     "<div class='taru-legend-panel' id='taruLegendPanel'>"
-                    
-                    "<div id='leg_SebaranPaguperSRS'>"
+
+                    # FIX: Legenda Sebaran Pagu juga dimulai display:none
+                    "<div id='leg_SebaranPaguperSRS' style='display:none;'>"
                     "<div class='taru-legend-title'>Total Pagu Anggaran</div>"
                     + legend_rows +
                     "</div>"
-                    
+
                     + legend_rows_extra +
-                    
+
+                    # Pesan placeholder ketika semua layer dimatikan
+                    "<div id='leg_empty_msg' style='display:none;color:#aaa;"
+                    "font-size:0.7rem;text-align:center;padding:6px 0;'>"
+                    "Aktifkan layer untuk melihat legenda</div>"
+
                     "</div>"
                     "<div class='taru-legend-toggle' id='taruLegendToggle' onclick=\""
                     "var p=document.getElementById('taruLegendPanel');"
@@ -3065,25 +3071,59 @@ try:
                     "}else{p.classList.add('open');t.textContent='▼ Legenda';}"
                     "\">▲ Legenda</div>"
                     "</div>"
-                    
-                    # 3. JAVASCRIPT AJAIB: Memantau kotak centang (Versi Anti-Crash Paling Presisi)
+
+                    # 3. JAVASCRIPT: Pantau checkbox Leaflet di dalam iframe dan sinkronkan legenda
                     "<script>"
-                    "setInterval(function() {"
-                    "  try {"
-                    "    var labels = document.querySelectorAll('.leaflet-control-layers-overlays label');"
-                    "    labels.forEach(function(lbl) {"
-                    "      var cb = lbl.querySelector('.leaflet-control-layers-selector');"
-                    "      var span = lbl.querySelector('span');"
-                    "      if (cb && span) {"
-                    "        var safeName = span.textContent.replace(/[^a-zA-Z0-9]/g, '');"
-                    "        var legDiv = document.getElementById('leg_' + safeName);"
-                    "        if (legDiv) {"
-                    "          legDiv.style.display = cb.checked ? 'block' : 'none';"
-                    "        }"
+                    "(function() {"
+                    "  function syncLegend() {"
+                    "    try {"
+                    # Peta Folium berada di dalam <iframe>, kita harus masuk ke dalamnya
+                    "      var iframes = document.querySelectorAll('iframe');"
+                    "      iframes.forEach(function(fr) {"
+                    "        try {"
+                    "          var doc = fr.contentDocument || fr.contentWindow.document;"
+                    "          if (!doc) return;"
+                    "          var labels = doc.querySelectorAll('.leaflet-control-layers-overlays label');"
+                    "          labels.forEach(function(lbl) {"
+                    "            var cb   = lbl.querySelector('.leaflet-control-layers-selector');"
+                    "            var span = lbl.querySelector('span');"
+                    "            if (!cb || !span) return;"
+                    # Buat safe ID yang sama persis seperti Python: hanya alfanumerik
+                    "            var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');"
+                    "            var legDiv = document.getElementById('leg_' + safeName);"
+                    "            if (legDiv) {"
+                    "              legDiv.style.display = cb.checked ? 'block' : 'none';"
+                    "            }"
+                    "          });"
+                    "        } catch(e) {}"
+                    "      });"
+                    # Juga coba langsung di dokumen utama (fallback jika tidak ada iframe)
+                    "      var labelsMain = document.querySelectorAll('.leaflet-control-layers-overlays label');"
+                    "      labelsMain.forEach(function(lbl) {"
+                    "        try {"
+                    "          var cb   = lbl.querySelector('.leaflet-control-layers-selector');"
+                    "          var span = lbl.querySelector('span');"
+                    "          if (!cb || !span) return;"
+                    "          var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');"
+                    "          var legDiv = document.getElementById('leg_' + safeName);"
+                    "          if (legDiv) {"
+                    "            legDiv.style.display = cb.checked ? 'block' : 'none';"
+                    "          }"
+                    "        } catch(e) {}"
+                    "      });"
+                    # Tampilkan pesan 'kosong' jika tidak ada legenda yang aktif
+                    "      var panel = document.getElementById('taruLegendPanel');"
+                    "      var emptyMsg = document.getElementById('leg_empty_msg');"
+                    "      if (panel && emptyMsg) {"
+                    "        var visibleLegs = panel.querySelectorAll('[id^=\"leg_\"]:not(#leg_empty_msg)');"
+                    "        var anyVisible = false;"
+                    "        visibleLegs.forEach(function(d) { if (d.style.display !== 'none') anyVisible = true; });"
+                    "        emptyMsg.style.display = anyVisible ? 'none' : 'block';"
                     "      }"
-                    "    });"
-                    "  } catch(e) {}"
-                    "}, 400);"
+                    "    } catch(e) {}"
+                    "  }"
+                    "  setInterval(syncLegend, 400);"
+                    "})();"
                     "</script>"
                 )
                 m_map.get_root().html.add_child(folium.Element(legend_html))

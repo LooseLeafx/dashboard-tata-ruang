@@ -2991,15 +2991,12 @@ try:
                         "</div></div>"
                     )
 
-                # --- LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
+                # --- 1. LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
                 legend_rows_extra = ""
                 for layer in st.session_state.extra_layers:
-                    # Buat ID unik dari nama layer (hapus spasi dan simbol)
                     safe_id = "".join([c for c in layer['name'] if c.isalnum()])
-                    # Tentukan status tampil awal dari Popover
                     disp = "block" if layer['visible'] else "none"
                     
-                    # Bungkus legenda per-layer dengan ID khusus
                     legend_rows_extra += f"<div id='leg_{safe_id}' style='display:{disp};'>"
                     legend_rows_extra += f"<div class='taru-legend-title' style='margin-top:10px; border-top:1px solid #eee; padding-top:8px;'>{layer['name']}</div>"
                     
@@ -3013,6 +3010,7 @@ try:
                     else:
                         attr = cc_l.get('attribute', 'Kategori')
                         custom_cols = cc_l.get('custom_colors', {})
+                        # Menggunakan 'unique_vals' agar tidak error
                         uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
                         
                         if attr in uv_dict:
@@ -3026,8 +3024,8 @@ try:
                                     f"<div style='color:#555;font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;' title='{val_str}'>{val_str}</div></div>"
                                 )
                     legend_rows_extra += "</div>"
-                # ------------------------------------
 
+                # --- 2. GABUNGAN HTML LEGENDA ---
                 legend_html = (
                     "<style>"
                     ".taru-legend-ctrl {"
@@ -3051,13 +3049,11 @@ try:
                     "<div class='taru-legend-ctrl'>"
                     "<div class='taru-legend-panel' id='taruLegendPanel'>"
                     
-                    # 1. Bungkus Legenda Pagu Utama agar bisa merespon klik
                     "<div id='leg_SebaranPaguperSRS'>"
                     "<div class='taru-legend-title'>Total Pagu Anggaran</div>"
                     + legend_rows +
                     "</div>"
                     
-                    # 2. Masukkan Legenda Ekstra
                     + legend_rows_extra +
                     
                     "</div>"
@@ -3070,21 +3066,23 @@ try:
                     "\">▲ Legenda</div>"
                     "</div>"
                     
-                    # 3. JAVASCRIPT AJAIB: Memantau Leaflet Overlays (Super Presisi)
+                    # 3. JAVASCRIPT AJAIB: Memantau kotak centang (Versi Anti-Crash Paling Presisi)
                     "<script>"
                     "setInterval(function() {"
-                    "  var overlays = document.querySelectorAll('.leaflet-control-layers-overlays label');"
-                    "  overlays.forEach(function(lbl) {"
-                    "    var cb = lbl.querySelector('input[type=\"checkbox\"]');"
-                    "    var span = lbl.querySelector('span');"
-                    "    if (cb && span) {"
-                    "      var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');"
-                    "      var legDiv = document.getElementById('leg_' + safeName);"
-                    "      if (legDiv) {"
-                    "        legDiv.style.display = cb.checked ? 'block' : 'none';"
+                    "  try {"
+                    "    var labels = document.querySelectorAll('.leaflet-control-layers-overlays label');"
+                    "    labels.forEach(function(lbl) {"
+                    "      var cb = lbl.querySelector('.leaflet-control-layers-selector');"
+                    "      var span = lbl.querySelector('span');"
+                    "      if (cb && span) {"
+                    "        var safeName = span.textContent.replace(/[^a-zA-Z0-9]/g, '');"
+                    "        var legDiv = document.getElementById('leg_' + safeName);"
+                    "        if (legDiv) {"
+                    "          legDiv.style.display = cb.checked ? 'block' : 'none';"
+                    "        }"
                     "      }"
-                    "    }"
-                    "  });"
+                    "    });"
+                    "  } catch(e) {}"
                     "}, 400);"
                     "</script>"
                 )

@@ -34,5 +34,26 @@
     "type": "kmz",
     "storage": "github",
     "created_at": 1778118267.8962412
+  },
+  {
+    "name": "Jalan",
+    "filename": "aaee4bd7_1780232992.shp",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Hijau Alam"
+    },
+    "visible": false,
+    "type": "shp",
+    "storage": "github",
+    "created_at": 1780232993.974802,
+    "columns": [
+      "Ruas",
+      "Kewenangan",
+      "Sumber",
+      "Lokasi_Kab",
+      "Fungsi",
+      "Keterangan",
+      "Sumber_3"
+    ]
   }
 ]

@@ -41,7 +41,7 @@
     "color_config": {
       "mode": "palette",
       "palette": "Netral Abu",
-      "attribute": "Kewenangan"
+      "attribute": "Fungsi"
     },
     "visible": false,
     "type": "shp",

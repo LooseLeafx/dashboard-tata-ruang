@@ -6,7 +6,7 @@
       "mode": "palette",
       "palette": "Kategorikal"
     },
-    "visible": true,
+    "visible": false,
     "type": "kmz",
     "storage": "github",
     "created_at": 1778075413.2994676

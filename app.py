@@ -512,6 +512,12 @@ html, body, [class*="css"] {
     margin-bottom: 14px;
 }
 
+/* ── Lebar Popover (Melayang) ── */
+[data-testid="stPopoverBody"] {
+    min-width: 680px !important;
+    max-width: 90vw !important;
+}
+
 /* ── Tabs ── */
 [data-testid="stTabs"] [role="tablist"] {
     gap: 4px;
@@ -3014,6 +3020,43 @@ try:
                                     )
                 # ------------------------------------
 
+                # --- LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
+                legend_rows_extra = ""
+                for layer in st.session_state.extra_layers:
+                    # Buat ID unik dari nama layer (hapus spasi dan simbol)
+                    safe_id = "".join([c for c in layer['name'] if c.isalnum()])
+                    # Tentukan status tampil awal dari Popover
+                    disp = "block" if layer['visible'] else "none"
+                    
+                    # Bungkus legenda per-layer dengan ID khusus
+                    legend_rows_extra += f"<div id='leg_{safe_id}' style='display:{disp};'>"
+                    legend_rows_extra += f"<div class='taru-legend-title' style='margin-top:10px; border-top:1px solid #eee; padding-top:8px;'>{layer['name']}</div>"
+                    
+                    cc_l = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
+                    if cc_l['mode'] == 'single':
+                        legend_rows_extra += (
+                            f"<div style='display:flex;align-items:center;gap:8px;'>"
+                            f"<div style='background:{cc_l['color']};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                            f"<div style='color:#555;font-size:0.7rem;'>Semua area</div></div>"
+                        )
+                    else:
+                        attr = cc_l.get('attribute', 'Kategori')
+                        custom_cols = cc_l.get('custom_colors', {})
+                        uv_dict = layer.get('unique_values', {})
+                        
+                        if attr in uv_dict:
+                            pal_colors = PALETTES.get(cc_l.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
+                            for idx, val in enumerate(uv_dict[attr]):
+                                val_str = str(val)
+                                c = custom_cols.get(val_str, pal_colors[idx % len(pal_colors)])
+                                legend_rows_extra += (
+                                    f"<div style='display:flex;align-items:center;gap:8px;margin-top:3px;'>"
+                                    f"<div style='background:{c};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                                    f"<div style='color:#555;font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;' title='{val_str}'>{val_str}</div></div>"
+                                )
+                    legend_rows_extra += "</div>"
+                # ------------------------------------
+
                 legend_html = (
                     "<style>"
                     ".taru-legend-ctrl {"
@@ -3036,8 +3079,16 @@ try:
                     "</style>"
                     "<div class='taru-legend-ctrl'>"
                     "<div class='taru-legend-panel' id='taruLegendPanel'>"
+                    
+                    # 1. Bungkus Legenda Pagu Utama agar bisa merespon klik
+                    "<div id='leg_SebaranPaguperSRS'>"
                     "<div class='taru-legend-title'>Total Pagu Anggaran</div>"
                     + legend_rows +
+                    "</div>"
+                    
+                    # 2. Masukkan Legenda Ekstra
+                    + legend_rows_extra +
+                    
                     "</div>"
                     "<div class='taru-legend-toggle' id='taruLegendToggle' onclick=\""
                     "var p=document.getElementById('taruLegendPanel');"
@@ -3047,6 +3098,31 @@ try:
                     "}else{p.classList.add('open');t.textContent='▼ Legenda';}"
                     "\">▲ Legenda</div>"
                     "</div>"
+                    
+                    # 3. JAVASCRIPT AJAIB: Menghubungkan klik peta dengan legenda
+                    "<script>"
+                    "document.addEventListener('DOMContentLoaded', function() {"
+                    "  setTimeout(function() {"
+                    "    var mapObj = null;"
+                    "    for (var key in window.L._maps) {"
+                    "      mapObj = window.L._maps[key];"
+                    "      break;"
+                    "    }"
+                    "    if (mapObj) {"
+                    "      mapObj.on('overlayadd', function(e) {"
+                    "        var safeName = e.name.replace(/[^a-zA-Z0-9]/g, '');"
+                    "        var leg = document.getElementById('leg_' + safeName);"
+                    "        if(leg) leg.style.display = 'block';"
+                    "      });"
+                    "      mapObj.on('overlayremove', function(e) {"
+                    "        var safeName = e.name.replace(/[^a-zA-Z0-9]/g, '');"
+                    "        var leg = document.getElementById('leg_' + safeName);"
+                    "        if(leg) leg.style.display = 'none';"
+                    "      });"
+                    "    }"
+                    "  }, 1000);"
+                    "});"
+                    "</script>"
                 )
                 m_map.get_root().html.add_child(folium.Element(legend_html))
 

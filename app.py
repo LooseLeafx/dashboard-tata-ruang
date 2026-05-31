@@ -2977,6 +2977,14 @@ try:
                     fmt_miliar(BREAKPOINTS[3]) + " – " + fmt_miliar(BREAKPOINTS[4]),
                     "> " + fmt_miliar(BREAKPOINTS[4]),
                 ]
+                # ── LEGENDA KUSTOM ──────────────────────────────────────────
+                # ARSITEKTUR: Panel legenda + JavaScript di-inject LANGSUNG ke
+                # dalam dokumen peta Folium (bukan halaman Streamlit induk).
+                # Ini wajib agar script bisa membaca checkbox Leaflet yang ada
+                # di dokumen yang sama — tidak ada cross-frame barrier.
+                # ────────────────────────────────────────────────────────────
+
+                # --- 1. Bangun isi legenda: Sebaran Pagu (layer bawaan) ---
                 legend_rows = ""
                 for _i, (_c, _l, _r) in enumerate(
                         zip(YL_GN_COLORS, LEGEND_LABELS, RANGE_LABELS)):
@@ -2991,141 +2999,175 @@ try:
                         "</div></div>"
                     )
 
-                # --- 1. LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
-                # Semua div legenda dimulai dengan display:none — JavaScript yang mengontrol
-                # visibilitasnya berdasarkan status checkbox Leaflet secara real-time.
+                # --- 2. Bangun isi legenda: Extra layers ---
+                # Semua div legenda mulai display:none —
+                # JavaScript di dalam peta yang mengontrol show/hide-nya.
                 legend_rows_extra = ""
                 for layer in st.session_state.extra_layers:
-                    safe_id = "".join([c for c in layer['name'] if c.isalnum()])
-                    # FIX: Selalu mulai dengan display:none — JS yang akan show/hide
-                    legend_rows_extra += f"<div id='leg_{safe_id}' style='display:none;'>"
-                    legend_rows_extra += f"<div class='taru-legend-title' style='margin-top:10px; border-top:1px solid #eee; padding-top:8px;'>{layer['name']}</div>"
-                    
-                    cc_l = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
-                    if cc_l['mode'] == 'single':
+                    safe_id  = "".join([c for c in layer['name'] if c.isalnum()])
+                    cc_l     = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
+                    lyr_vis  = layer.get('visible', False)
+
+                    legend_rows_extra += (
+                        f"<div id='leg_{safe_id}' "
+                        f"style='display:{'block' if lyr_vis else 'none'};'>"
+                        f"<div class='taru-legend-title' "
+                        f"style='margin-top:10px;border-top:1px solid #eee;padding-top:8px;'>"
+                        f"{layer['name']}</div>"
+                    )
+
+                    if cc_l.get('mode') == 'single':
+                        col_hex = cc_l.get('color', '#e74c3c')
                         legend_rows_extra += (
                             f"<div style='display:flex;align-items:center;gap:8px;'>"
-                            f"<div style='background:{cc_l['color']};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
-                            f"<div style='color:#555;font-size:0.7rem;'>Semua area</div></div>"
+                            f"<div style='background:{col_hex};width:15px;height:15px;"
+                            f"border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                            f"<div style='color:#555;font-size:0.7rem;'>Semua area</div>"
+                            f"</div>"
                         )
                     else:
-                        attr = cc_l.get('attribute', 'Kategori')
+                        # Mode palette / kategorikal
+                        cols_list   = layer.get('columns', [])
+                        # Gunakan atribut yang sudah dipilih user; fallback ke kolom pertama
+                        attr        = cc_l.get('attribute') or (cols_list[0] if cols_list else '')
                         custom_cols = cc_l.get('custom_colors', {})
-                        uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
-                        
-                        if attr in uv_dict:
-                            pal_colors = PALETTES.get(cc_l.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
+                        uv_dict     = layer.get('unique_vals', layer.get('unique_values', {}))
+                        pal_name    = cc_l.get('palette', 'Kategorikal')
+                        pal_colors  = PALETTES.get(pal_name, PALETTES['Kategorikal'])
+
+                        # Tampilkan nama atribut sebagai sub-judul
+                        if attr:
+                            legend_rows_extra += (
+                                f"<div style='color:#888;font-size:0.65rem;"
+                                f"margin-bottom:4px;font-style:italic;'>{attr}</div>"
+                            )
+
+                        if attr and attr in uv_dict:
                             for idx, val in enumerate(uv_dict[attr]):
                                 val_str = str(val)
-                                c = custom_cols.get(val_str, pal_colors[idx % len(pal_colors)])
+                                col_hex = custom_cols.get(val_str,
+                                            pal_colors[idx % len(pal_colors)])
                                 legend_rows_extra += (
-                                    f"<div style='display:flex;align-items:center;gap:8px;margin-top:3px;'>"
-                                    f"<div style='background:{c};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
-                                    f"<div style='color:#555;font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;' title='{val_str}'>{val_str}</div></div>"
+                                    f"<div style='display:flex;align-items:center;"
+                                    f"gap:8px;margin-top:3px;'>"
+                                    f"<div style='background:{col_hex};width:15px;height:15px;"
+                                    f"border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                                    f"<div style='color:#555;font-size:0.7rem;overflow:hidden;"
+                                    f"text-overflow:ellipsis;white-space:nowrap;max-width:160px;'"
+                                    f" title='{val_str}'>{val_str}</div></div>"
                                 )
+                        elif attr:
+                            # Atribut dipilih tapi unique_vals belum ada → tampilkan warna default
+                            legend_rows_extra += (
+                                f"<div style='display:flex;align-items:center;gap:8px;'>"
+                                f"<div style='background:{pal_colors[0]};width:15px;height:15px;"
+                                f"border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
+                                f"<div style='color:#555;font-size:0.7rem;'>{attr}</div></div>"
+                            )
+
                     legend_rows_extra += "</div>"
 
-                # --- 2. GABUNGAN HTML LEGENDA ---
-                legend_html = (
-                    "<style>"
-                    ".taru-legend-ctrl {"
-                    "position:absolute;bottom:30px;right:10px;z-index:1000;"
-                    "font-family:Arial,sans-serif;}"
-                    ".taru-legend-toggle {"
-                    "background:white;border:2px solid rgba(0,0,0,0.2);"
-                    "border-radius:6px;padding:5px 10px;cursor:pointer;"
-                    "font-size:0.78rem;font-weight:600;color:#0b3327;"
-                    "display:block;text-align:center;user-select:none;"
-                    "box-shadow:0 1px 5px rgba(0,0,0,0.15);white-space:nowrap;}"
-                    ".taru-legend-toggle:hover{background:#f4f4f4;}"
-                    ".taru-legend-panel{"
-                    "background:white;border:2px solid rgba(0,0,0,0.2);"
-                    "border-radius:6px;padding:10px 14px;margin-top:4px;"
-                    "box-shadow:0 1px 5px rgba(0,0,0,0.15);min-width:200px;display:none;}"
-                    ".taru-legend-panel.open{display:block;}"
-                    ".taru-legend-title{font-weight:700;color:#0b3327;"
-                    "font-size:0.75rem;margin-bottom:8px;}"
-                    "</style>"
-                    "<div class='taru-legend-ctrl'>"
-                    "<div class='taru-legend-panel' id='taruLegendPanel'>"
+                # --- 3. Rakit HTML + CSS + JS dan inject ke dalam peta Folium ---
+                # Karena folium me-render peta sebagai dokumen HTML mandiri,
+                # kita gunakan MacroElement agar semua kode masuk ke <body> peta —
+                # dokumen yang sama dengan Leaflet dan checkbox-nya.
+                legend_html = f"""
+<style>
+.taru-legend-ctrl {{
+    position:absolute; bottom:30px; right:10px; z-index:1000;
+    font-family:Arial,sans-serif;
+}}
+.taru-legend-toggle {{
+    background:white; border:2px solid rgba(0,0,0,0.2);
+    border-radius:6px; padding:5px 10px; cursor:pointer;
+    font-size:0.78rem; font-weight:600; color:#0b3327;
+    display:block; text-align:center; user-select:none;
+    box-shadow:0 1px 5px rgba(0,0,0,0.15); white-space:nowrap;
+}}
+.taru-legend-toggle:hover {{ background:#f4f4f4; }}
+.taru-legend-panel {{
+    background:white; border:2px solid rgba(0,0,0,0.2);
+    border-radius:6px; padding:10px 14px; margin-bottom:4px;
+    box-shadow:0 1px 5px rgba(0,0,0,0.15); min-width:200px;
+    max-height:55vh; overflow-y:auto; display:none;
+}}
+.taru-legend-panel.open {{ display:block; }}
+.taru-legend-title {{
+    font-weight:700; color:#0b3327;
+    font-size:0.75rem; margin-bottom:8px;
+}}
+</style>
 
-                    # FIX: Legenda Sebaran Pagu juga dimulai display:none
-                    "<div id='leg_SebaranPaguperSRS' style='display:none;'>"
-                    "<div class='taru-legend-title'>Total Pagu Anggaran</div>"
-                    + legend_rows +
-                    "</div>"
+<div class="taru-legend-ctrl">
+  <div class="taru-legend-panel" id="taruLegendPanel">
 
-                    + legend_rows_extra +
+    <!-- Legenda Sebaran Pagu per SRS (layer bawaan choropleth) -->
+    <div id="leg_SebaranPaguperSRS" style="display:none;">
+      <div class="taru-legend-title">Total Pagu Anggaran</div>
+      {legend_rows}
+    </div>
 
-                    # Pesan placeholder ketika semua layer dimatikan
-                    "<div id='leg_empty_msg' style='display:none;color:#aaa;"
-                    "font-size:0.7rem;text-align:center;padding:6px 0;'>"
-                    "Aktifkan layer untuk melihat legenda</div>"
+    <!-- Legenda layer ekstra (upload user) -->
+    {legend_rows_extra}
 
-                    "</div>"
-                    "<div class='taru-legend-toggle' id='taruLegendToggle' onclick=\""
-                    "var p=document.getElementById('taruLegendPanel');"
-                    "var t=document.getElementById('taruLegendToggle');"
-                    "if(p.classList.contains('open')){"
-                    "p.classList.remove('open');t.textContent='▲ Legenda';"
-                    "}else{p.classList.add('open');t.textContent='▼ Legenda';}"
-                    "\">▲ Legenda</div>"
-                    "</div>"
+    <!-- Pesan ketika semua layer mati -->
+    <div id="leg_empty_msg"
+         style="display:none;color:#aaa;font-size:0.7rem;text-align:center;padding:6px 0;">
+      Aktifkan layer untuk melihat legenda
+    </div>
+  </div>
 
-                    # 3. JAVASCRIPT: Pantau checkbox Leaflet di dalam iframe dan sinkronkan legenda
-                    "<script>"
-                    "(function() {"
-                    "  function syncLegend() {"
-                    "    try {"
-                    # Peta Folium berada di dalam <iframe>, kita harus masuk ke dalamnya
-                    "      var iframes = document.querySelectorAll('iframe');"
-                    "      iframes.forEach(function(fr) {"
-                    "        try {"
-                    "          var doc = fr.contentDocument || fr.contentWindow.document;"
-                    "          if (!doc) return;"
-                    "          var labels = doc.querySelectorAll('.leaflet-control-layers-overlays label');"
-                    "          labels.forEach(function(lbl) {"
-                    "            var cb   = lbl.querySelector('.leaflet-control-layers-selector');"
-                    "            var span = lbl.querySelector('span');"
-                    "            if (!cb || !span) return;"
-                    # Buat safe ID yang sama persis seperti Python: hanya alfanumerik
-                    "            var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');"
-                    "            var legDiv = document.getElementById('leg_' + safeName);"
-                    "            if (legDiv) {"
-                    "              legDiv.style.display = cb.checked ? 'block' : 'none';"
-                    "            }"
-                    "          });"
-                    "        } catch(e) {}"
-                    "      });"
-                    # Juga coba langsung di dokumen utama (fallback jika tidak ada iframe)
-                    "      var labelsMain = document.querySelectorAll('.leaflet-control-layers-overlays label');"
-                    "      labelsMain.forEach(function(lbl) {"
-                    "        try {"
-                    "          var cb   = lbl.querySelector('.leaflet-control-layers-selector');"
-                    "          var span = lbl.querySelector('span');"
-                    "          if (!cb || !span) return;"
-                    "          var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');"
-                    "          var legDiv = document.getElementById('leg_' + safeName);"
-                    "          if (legDiv) {"
-                    "            legDiv.style.display = cb.checked ? 'block' : 'none';"
-                    "          }"
-                    "        } catch(e) {}"
-                    "      });"
-                    # Tampilkan pesan 'kosong' jika tidak ada legenda yang aktif
-                    "      var panel = document.getElementById('taruLegendPanel');"
-                    "      var emptyMsg = document.getElementById('leg_empty_msg');"
-                    "      if (panel && emptyMsg) {"
-                    "        var visibleLegs = panel.querySelectorAll('[id^=\"leg_\"]:not(#leg_empty_msg)');"
-                    "        var anyVisible = false;"
-                    "        visibleLegs.forEach(function(d) { if (d.style.display !== 'none') anyVisible = true; });"
-                    "        emptyMsg.style.display = anyVisible ? 'none' : 'block';"
-                    "      }"
-                    "    } catch(e) {}"
-                    "  }"
-                    "  setInterval(syncLegend, 400);"
-                    "})();"
-                    "</script>"
-                )
+  <div class="taru-legend-toggle" id="taruLegendToggle"
+       onclick="var p=document.getElementById('taruLegendPanel');
+                var t=document.getElementById('taruLegendToggle');
+                if(p.classList.contains('open')){{
+                  p.classList.remove('open'); t.textContent='▲ Legenda';
+                }} else {{
+                  p.classList.add('open'); t.textContent='▼ Legenda';
+                }}">
+    ▲ Legenda
+  </div>
+</div>
+
+<script>
+// Script ini berjalan di dalam dokumen peta Folium —
+// dokumen yang SAMA dengan checkbox Leaflet, jadi tidak ada cross-frame barrier.
+(function() {{
+  function syncLegend() {{
+    try {{
+      var labels = document.querySelectorAll(
+        '.leaflet-control-layers-overlays label'
+      );
+      var anyVisible = false;
+
+      labels.forEach(function(lbl) {{
+        var cb   = lbl.querySelector('input[type=checkbox]');
+        var span = lbl.querySelector('span');
+        if (!cb || !span) return;
+
+        // Safe ID: hanya karakter alfanumerik (sama persis dengan Python)
+        var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');
+        var legDiv   = document.getElementById('leg_' + safeName);
+        if (legDiv) {{
+          legDiv.style.display = cb.checked ? 'block' : 'none';
+          if (cb.checked) anyVisible = true;
+        }}
+      }});
+
+      // Tampilkan pesan kosong jika tidak ada layer aktif
+      var emptyMsg = document.getElementById('leg_empty_msg');
+      if (emptyMsg) {{
+        emptyMsg.style.display = anyVisible ? 'none' : 'block';
+      }}
+    }} catch(e) {{}}
+  }}
+
+  // Jalankan segera setelah peta siap, lalu pantau setiap 350ms
+  setTimeout(syncLegend, 800);
+  setInterval(syncLegend, 350);
+}})();
+</script>
+"""
                 m_map.get_root().html.add_child(folium.Element(legend_html))
 
                 # Highlight SRS yang dipilih

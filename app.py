@@ -3067,108 +3067,112 @@ try:
 
                     legend_rows_extra += "</div>"
 
-                # --- 3. Rakit HTML + CSS + JS dan inject ke dalam peta Folium ---
-                # Karena folium me-render peta sebagai dokumen HTML mandiri,
-                # kita gunakan MacroElement agar semua kode masuk ke <body> peta —
-                # dokumen yang sama dengan Leaflet dan checkbox-nya.
-                legend_html = f"""
-<style>
-.taru-legend-ctrl {{
-    position:absolute; bottom:30px; right:10px; z-index:1000;
-    font-family:Arial,sans-serif;
-}}
-.taru-legend-toggle {{
-    background:white; border:2px solid rgba(0,0,0,0.2);
-    border-radius:6px; padding:5px 10px; cursor:pointer;
-    font-size:0.78rem; font-weight:600; color:#0b3327;
-    display:block; text-align:center; user-select:none;
-    box-shadow:0 1px 5px rgba(0,0,0,0.15); white-space:nowrap;
-}}
-.taru-legend-toggle:hover {{ background:#f4f4f4; }}
-.taru-legend-panel {{
-    background:white; border:2px solid rgba(0,0,0,0.2);
-    border-radius:6px; padding:10px 14px; margin-bottom:4px;
-    box-shadow:0 1px 5px rgba(0,0,0,0.15); min-width:200px;
-    max-height:55vh; overflow-y:auto; display:none;
-}}
-.taru-legend-panel.open {{ display:block; }}
-.taru-legend-title {{
-    font-weight:700; color:#0b3327;
-    font-size:0.75rem; margin-bottom:8px;
-}}
-</style>
+                # --- 3. Rakit HTML + JS dan inject sebagai Leaflet Control ---
+                # Menggunakan branca.element.MacroElement + Jinja2 Template standar.
+                # Ini cara yang dipakai Folium secara internal — paling kompatibel.
+                import json as _json
+                from jinja2 import Template as _JinjaTemplate
+                from branca.element import MacroElement as _MacroElement
 
-<div class="taru-legend-ctrl">
-  <div class="taru-legend-panel" id="taruLegendPanel">
+                # Bungkus legend_rows sebagai blok div legenda pagu
+                leg_pagu_html = (
+                    "<div id='leg_SebaranPaguperSRS' style='display:none;'>"
+                    "<div class='taru-leg-title'>Total Pagu Anggaran</div>"
+                    + legend_rows +
+                    "</div>"
+                )
+                leg_extra_html = legend_rows_extra
 
-    <!-- Legenda Sebaran Pagu per SRS (layer bawaan choropleth) -->
-    <div id="leg_SebaranPaguperSRS" style="display:none;">
-      <div class="taru-legend-title">Total Pagu Anggaran</div>
-      {legend_rows}
-    </div>
+                # JSON-encode panel content agar aman di dalam JS string
+                panel_content_js = _json.dumps(
+                    leg_pagu_html + leg_extra_html +
+                    "<div id='leg_empty_msg' style='display:none;color:#aaa;"
+                    "font-size:0.7rem;text-align:center;padding:6px 0;'>"
+                    "Aktifkan layer untuk melihat legenda</div>"
+                )
 
-    <!-- Legenda layer ekstra (upload user) -->
-    {legend_rows_extra}
+                _legend_js = """
+{% macro script(this, kwargs) %}
+(function() {
+  var css = document.createElement('style');
+  css.textContent =
+    '.tl-wrap{font-family:Arial,sans-serif;}' +
+    '.tl-btn{background:#fff;border:2px solid rgba(0,0,0,.2);border-radius:6px;' +
+    'padding:5px 10px;cursor:pointer;font-size:.78rem;font-weight:600;color:#0b3327;' +
+    'display:block;text-align:center;user-select:none;' +
+    'box-shadow:0 1px 5px rgba(0,0,0,.15);white-space:nowrap;}' +
+    '.tl-btn:hover{background:#f4f4f4;}' +
+    '.tl-panel{background:#fff;border:2px solid rgba(0,0,0,.2);border-radius:6px;' +
+    'padding:10px 14px;margin-bottom:4px;box-shadow:0 1px 5px rgba(0,0,0,.15);' +
+    'min-width:200px;max-height:55vh;overflow-y:auto;display:none;}' +
+    '.tl-panel.open{display:block;}' +
+    '.taru-leg-title{font-weight:700;color:#0b3327;font-size:.75rem;margin-bottom:8px;}';
+  document.head.appendChild(css);
 
-    <!-- Pesan ketika semua layer mati -->
-    <div id="leg_empty_msg"
-         style="display:none;color:#aaa;font-size:0.7rem;text-align:center;padding:6px 0;">
-      Aktifkan layer untuk melihat legenda
-    </div>
-  </div>
+  var LegCtrl = L.Control.extend({
+    options: { position: 'bottomright' },
+    onAdd: function() {
+      var wrap  = L.DomUtil.create('div','tl-wrap');
+      var panel = L.DomUtil.create('div','tl-panel',wrap);
+      panel.id  = 'taruLegendPanel';
+      panel.innerHTML = PANEL_CONTENT;
+      var btn   = L.DomUtil.create('div','tl-btn',wrap);
+      btn.innerHTML   = '&#9650; Legenda';
+      L.DomEvent.disableClickPropagation(wrap);
+      L.DomEvent.disableScrollPropagation(wrap);
+      L.DomEvent.on(btn,'click',function(){
+        if(panel.classList.contains('open')){
+          panel.classList.remove('open'); btn.innerHTML='&#9650; Legenda';
+        } else {
+          panel.classList.add('open'); btn.innerHTML='&#9660; Legenda';
+        }
+      });
+      return wrap;
+    }
+  });
 
-  <div class="taru-legend-toggle" id="taruLegendToggle"
-       onclick="var p=document.getElementById('taruLegendPanel');
-                var t=document.getElementById('taruLegendToggle');
-                if(p.classList.contains('open')){{
-                  p.classList.remove('open'); t.textContent='▲ Legenda';
-                }} else {{
-                  p.classList.add('open'); t.textContent='▼ Legenda';
-                }}">
-    ▲ Legenda
-  </div>
-</div>
+  function findMap(){
+    try{
+      for(var k in window){
+        try{ if(window[k] && window[k] instanceof L.Map) return window[k]; }catch(e){}
+      }
+    }catch(e){}
+    return null;
+  }
 
-<script>
-// Script ini berjalan di dalam dokumen peta Folium —
-// dokumen yang SAMA dengan checkbox Leaflet, jadi tidak ada cross-frame barrier.
-(function() {{
-  function syncLegend() {{
-    try {{
-      var labels = document.querySelectorAll(
-        '.leaflet-control-layers-overlays label'
-      );
-      var anyVisible = false;
+  function init(){
+    var m = findMap();
+    if(!m){ setTimeout(init,300); return; }
+    new LegCtrl().addTo(m);
+    function sync(){
+      try{
+        var any=false;
+        document.querySelectorAll('.leaflet-control-layers-overlays label')
+          .forEach(function(lbl){
+            var cb=lbl.querySelector('input[type=checkbox]');
+            var sp=lbl.querySelector('span');
+            if(!cb||!sp) return;
+            var id='leg_'+sp.textContent.trim().replace(/[^a-zA-Z0-9]/g,'');
+            var el=document.getElementById(id);
+            if(el){ el.style.display=cb.checked?'block':'none'; if(cb.checked)any=true; }
+          });
+        var em=document.getElementById('leg_empty_msg');
+        if(em) em.style.display=any?'none':'block';
+      }catch(e){}
+    }
+    setTimeout(sync,700); setInterval(sync,400);
+  }
 
-      labels.forEach(function(lbl) {{
-        var cb   = lbl.querySelector('input[type=checkbox]');
-        var span = lbl.querySelector('span');
-        if (!cb || !span) return;
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded',function(){setTimeout(init,400);});
+  } else { setTimeout(init,400); }
+})();
+{% endmacro %}
+""".replace('PANEL_CONTENT', panel_content_js)
 
-        // Safe ID: hanya karakter alfanumerik (sama persis dengan Python)
-        var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');
-        var legDiv   = document.getElementById('leg_' + safeName);
-        if (legDiv) {{
-          legDiv.style.display = cb.checked ? 'block' : 'none';
-          if (cb.checked) anyVisible = true;
-        }}
-      }});
-
-      // Tampilkan pesan kosong jika tidak ada layer aktif
-      var emptyMsg = document.getElementById('leg_empty_msg');
-      if (emptyMsg) {{
-        emptyMsg.style.display = anyVisible ? 'none' : 'block';
-      }}
-    }} catch(e) {{}}
-  }}
-
-  // Jalankan segera setelah peta siap, lalu pantau setiap 350ms
-  setTimeout(syncLegend, 800);
-  setInterval(syncLegend, 350);
-}})();
-</script>
-"""
-                m_map.get_root().html.add_child(folium.Element(legend_html))
+                legend_macro = _MacroElement()
+                legend_macro._template = _JinjaTemplate(_legend_js)
+                legend_macro.add_to(m_map)
 
                 # Highlight SRS yang dipilih
                 if selected_srs:

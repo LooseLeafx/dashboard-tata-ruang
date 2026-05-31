@@ -2725,7 +2725,7 @@ try:
                                         st.rerun()
                                 
                                 with p_col:
-                                    uv_dict = layer.get('unique_values', {})
+                                    uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
                                     if cur_attr in uv_dict:
                                         with st.popover("🎨"):
                                             st.markdown("<b style='font-size:0.75rem;'>Warna per Kategori</b>", unsafe_allow_html=True)
@@ -2991,35 +2991,6 @@ try:
                         "</div></div>"
                     )
 
-                # --- TAMBAHAN: LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
-                for layer in st.session_state.extra_layers:
-                    if layer['visible']: # Hanya masukkan legenda jika layer sedang nyala (👁️)
-                        cc_l = layer.get('color_config', {'mode': 'single', 'color': '#e74c3c'})
-                        legend_rows += f"<div class='taru-legend-title' style='margin-top:10px; border-top:1px solid #eee; padding-top:8px;'>{layer['name']}</div>"
-                        
-                        if cc_l['mode'] == 'single':
-                            legend_rows += (
-                                f"<div style='display:flex;align-items:center;gap:8px;'>"
-                                f"<div style='background:{cc_l['color']};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
-                                f"<div style='color:#555;font-size:0.7rem;'>Semua area</div></div>"
-                            )
-                        else:
-                            attr = cc_l.get('attribute', 'Kategori')
-                            custom_cols = cc_l.get('custom_colors', {})
-                            uv_dict = layer.get('unique_values', {})
-                            
-                            if attr in uv_dict:
-                                pal_colors = PALETTES.get(cc_l.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
-                                for idx, val in enumerate(uv_dict[attr]):
-                                    val_str = str(val)
-                                    c = custom_cols.get(val_str, pal_colors[idx % len(pal_colors)])
-                                    legend_rows += (
-                                        f"<div style='display:flex;align-items:center;gap:8px;margin-top:3px;'>"
-                                        f"<div style='background:{c};width:15px;height:15px;border-radius:3px;border:1px solid #ccc;flex-shrink:0;'></div>"
-                                        f"<div style='color:#555;font-size:0.7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:150px;' title='{val_str}'>{val_str}</div></div>"
-                                    )
-                # ------------------------------------
-
                 # --- LEGENDA DINAMIS UNTUK LAYER EKSTRA ---
                 legend_rows_extra = ""
                 for layer in st.session_state.extra_layers:
@@ -3042,7 +3013,7 @@ try:
                     else:
                         attr = cc_l.get('attribute', 'Kategori')
                         custom_cols = cc_l.get('custom_colors', {})
-                        uv_dict = layer.get('unique_values', {})
+                        uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
                         
                         if attr in uv_dict:
                             pal_colors = PALETTES.get(cc_l.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
@@ -3099,19 +3070,21 @@ try:
                     "\">▲ Legenda</div>"
                     "</div>"
                     
-                    # 3. JAVASCRIPT AJAIB: Memantau kotak centang (Versi Anti-Crash)
+                    # 3. JAVASCRIPT AJAIB: Memantau Leaflet Overlays (Super Presisi)
                     "<script>"
                     "setInterval(function() {"
-                    "  var inputs = document.querySelectorAll('.leaflet-control-layers-selector');"
-                    "  for(var i = 0; i < inputs.length; i++) {"
-                    "    var cb = inputs[i];"
-                    "    var txt = cb.parentNode.textContent || cb.parentNode.innerText;"
-                    "    var safeName = txt.trim().replace(/[^a-zA-Z0-9]/g, '');"
-                    "    var legDiv = document.getElementById('leg_' + safeName);"
-                    "    if (legDiv) {"
-                    "      legDiv.style.display = cb.checked ? 'block' : 'none';"
+                    "  var overlays = document.querySelectorAll('.leaflet-control-layers-overlays label');"
+                    "  overlays.forEach(function(lbl) {"
+                    "    var cb = lbl.querySelector('input[type=\"checkbox\"]');"
+                    "    var span = lbl.querySelector('span');"
+                    "    if (cb && span) {"
+                    "      var safeName = span.textContent.trim().replace(/[^a-zA-Z0-9]/g, '');"
+                    "      var legDiv = document.getElementById('leg_' + safeName);"
+                    "      if (legDiv) {"
+                    "        legDiv.style.display = cb.checked ? 'block' : 'none';"
+                    "      }"
                     "    }"
-                    "  }"
+                    "  });"
                     "}, 400);"
                     "</script>"
                 )

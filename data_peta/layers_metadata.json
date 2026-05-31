@@ -30,7 +30,7 @@
       "mode": "palette",
       "palette": "Kategorikal"
     },
-    "visible": true,
+    "visible": false,
     "type": "kmz",
     "storage": "github",
     "created_at": 1778118267.8962412

@@ -34,5 +34,29 @@
     "type": "kmz",
     "storage": "github",
     "created_at": 1778118267.8962412
+  },
+  {
+    "name": "Buffer 100m - APJ Provinsi T.A 2024",
+    "filename": "b0a42b61_1780231601.geojson",
+    "color_config": {
+      "mode": "single",
+      "color": "#3498db"
+    },
+    "visible": false,
+    "type": "geojson",
+    "storage": "github",
+    "created_at": 1780231602.904871,
+    "columns": [
+      "id",
+      "Name",
+      "No",
+      "Y",
+      "X",
+      "Ruas_Jalan",
+      "SRS",
+      "Jenis",
+      "Posisi",
+      "Foto"
+    ]
   }
 ]

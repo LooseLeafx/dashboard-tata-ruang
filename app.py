@@ -198,7 +198,8 @@ def add_layer_to_storage(name, uploaded_file, color_config, file_type='kmz'):
             'storage': 'github',
             'created_at': time.time(),
             'columns': columns_list,
-            'unique_vals': unique_vals
+            'unique_vals': unique_vals,
+            'opacity': 0.7
         }
         
         # Hapus file lama di GitHub jika mengupdate
@@ -1531,6 +1532,13 @@ try:
         # Load layers dari storage (Google Drive atau lokal)
         init_layers_storage()
         st.session_state.extra_layers = load_layers_from_storage()
+        # Ensure setiap layer memiliki field opacity dengan default value 0.7
+        for layer in st.session_state.extra_layers:
+            if 'opacity' not in layer:
+                layer['opacity'] = 0.7
+        # Save back dengan opacity field yang sudah ditambahkan
+        if st.session_state.extra_layers:
+            save_layers_to_storage(st.session_state.extra_layers)
     if "selected_srs_map" not in st.session_state:
         st.session_state.selected_srs_map = None
 
@@ -2531,91 +2539,87 @@ try:
         pop_buffer = btn_col2.popover("🛠️ Geoprocessing", use_container_width=True)
 
         with pop_upload:
-            st.markdown(
-                "<p style='font-size:0.78rem;color:#555;margin-bottom:10px;'>"
-                "Upload file KMZ/KML/SHP."
-                "Beri nama layer berdasarkan field <b>Name</b> pada file.</p>",
-                unsafe_allow_html=True
-            )
+            # --- CSS KHUSUS UNTUK TAMPILAN MOCKUP ---
+            st.markdown("""
+            <style>
+            /* Modifikasi File Uploader agar mirip desain */
+            [data-testid="stFileUploadDropzone"] {
+                border: 2px dashed #dce8e2 !important;
+                border-radius: 12px !important;
+                background-color: #fafbfc !important;
+                padding: 24px !important;
+            }
+            [data-testid="stFileUploadDropzone"]:hover {
+                border-color: #27ae60 !important;
+                background-color: #f0f9f4 !important;
+            }
+            /* Hilangkan ikon default Streamlit di uploader jika bisa */
+            [data-testid="stFileUploadDropzone"] svg {
+                color: #27ae60 !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
 
-            # Baris 1: Nama Layer & Mode Warna (Diberi ruang lebih pas)
-            up_col1, up_col2 = st.columns([2, 1.2])
+            # --- 1. HEADER UTAMA ---
+            st.markdown("<div style='font-size:1.3rem; font-weight:800; color:#0d2b4e; margin-bottom:4px;'>Upload Layer</div>", unsafe_allow_html=True)
+            st.markdown("<div style='font-size:0.85rem; color:#555; margin-bottom:20px;'>Upload file KMZ/KML/SHP dan beri nama layer.</div>", unsafe_allow_html=True)
+
+            # --- 2. BARIS INPUT (Label di atas) ---
+            up_col1, up_col2 = st.columns([1.2, 1])
             with up_col1:
+                # Label dimunculkan (tidak di-collapsed) agar tulisan berada di atas kotak
                 layer_name_input = st.text_input(
                     "Nama Layer",
-                    placeholder="contoh: Jalan, Batas Kalurahan, dll",
-                    key="new_layer_name",
-                    label_visibility="collapsed"
+                    placeholder="🏷️ Contoh: Jalan, Batas Kalurahan, dll",
+                    key="new_layer_name"
                 )
             with up_col2:
                 color_mode = st.selectbox(
-                    "Mode Warna",
+                    "Warna",
                     ["Warna Seragam", "Warna per Kategori"],
-                    key="new_layer_color_mode",
-                    label_visibility="collapsed"
+                    key="new_layer_color_mode"
                 )
-            
-            # Baris 2: File Uploader dibiarkan membentang penuh (Full Width)
-            uploaded_layer = st.file_uploader(
-                "Upload KMZ/KML/SHP", type=["kmz", "kml", "zip"],
-                key="layer_uploader",
-                label_visibility="collapsed"
-            )
 
-            st.markdown(
-                "<p style='font-size:0.68rem;color:#aaa;margin:-4px 0 6px 0;'>"                "💡 Format: <b>KMZ</b>, <b>KML</b>, atau <b>SHP</b> (dikemas dalam <b>ZIP</b> "                "bersama file .dbf, .shx, dll)</p>",
-                unsafe_allow_html=True
-            )
-
+            # --- 3. PEMILIHAN WARNA (Tergantung Pilihan) ---
             if color_mode == "Warna Seragam":
-                cc1, cc2 = st.columns([1, 4])
-                with cc1:
-                    layer_color_single = st.color_picker(
-                        "Warna", "#e74c3c", key="new_layer_color_single",
-                        label_visibility="collapsed"
-                    )
-                with cc2:
-                    st.markdown(
-                        "<p style='font-size:0.72rem;color:#888;padding-top:6px;'>"
-                        "Semua polygon menggunakan satu warna.</p>",
-                        unsafe_allow_html=True
-                    )
+                layer_color_single = st.color_picker(
+                    "Pilih Warna", "#e74c3c", key="new_layer_color_single", label_visibility="collapsed"
+                )
                 layer_color_config = {"mode": "single", "color": layer_color_single}
             else:
-                st.markdown(
-                    "<p style='font-size:0.72rem;font-weight:600;color:#0b3327;"
-                    "margin:8px 0 6px 0;'>Pilih Palet Warna Rekomendasi:</p>",
-                    unsafe_allow_html=True
-                )
+                st.markdown("<div style='font-size:0.75rem; font-weight:600; margin-bottom:5px;'>Pilih Palet:</div>", unsafe_allow_html=True)
                 pal_cols = st.columns(len(PALETTES))
                 for pi, (pname, pcolors) in enumerate(PALETTES.items()):
                     with pal_cols[pi]:
-                        swatches_html = "".join(
-                            "<div style='width:12px;height:12px;background:" + c +
-                            ";border-radius:2px;display:inline-block;margin:1px;'></div>"
-                            for c in pcolors[:5]
-                        )
-                        st.markdown(
-                            "<div style='text-align:center;'>" + swatches_html + "</div>",
-                            unsafe_allow_html=True
-                        )
-                        if st.button(pname, key="pal_btn_" + str(pi),
-                                     use_container_width=True):
+                        swatches_html = "".join(f"<div style='width:12px;height:12px;background:{c};display:inline-block;margin:1px;border-radius:2px;'></div>" for c in pcolors[:4])
+                        st.markdown(f"<div style='text-align:center; cursor:pointer;' title='{pname}'>{swatches_html}</div>", unsafe_allow_html=True)
+                        if st.button("Pilih", key=f"pal_btn_{pi}", use_container_width=True):
                             st.session_state["active_palette"] = pname
                             st.rerun()
-
-                active_pal = st.session_state.get(
-                    "active_palette", list(PALETTES.keys())[0])
-                st.markdown(
-                    "<p style='font-size:0.72rem;color:#27ae60;margin:6px 0;'>"
-                    "✅ Palet aktif: <b>" + active_pal + "</b></p>",
-                    unsafe_allow_html=True
-                )
+                active_pal = st.session_state.get("active_palette", list(PALETTES.keys())[0])
+                st.markdown(f"<div style='font-size:0.7rem; color:#27ae60;'>✅ Palet: <b>{active_pal}</b></div>", unsafe_allow_html=True)
                 layer_color_config = {"mode": "palette", "palette": active_pal}
 
-            if st.button("➕ Tambah Layer", key="btn_add_layer"):
+            # --- 4. UPLOADER AREA BEBAS (Tengah Lebar) ---
+            st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+            uploaded_layer = st.file_uploader(
+                "Klik untuk upload atau drag & drop", type=["kmz", "kml", "zip"],
+                key="layer_uploader",
+                help="Format: KMZ, KML, atau SHP (dalam ZIP) • Maks. 200MB",
+                label_visibility="collapsed"
+            )
+
+            # --- 5. HEADER DAFTAR LAYER & TOMBOL TAMBAH ---
+            st.markdown("<div style='margin-top: 30px;'></div>", unsafe_allow_html=True)
+            head_c1, head_c2 = st.columns([4, 1.5])
+            with head_c1:
+                st.markdown("<div style='font-size:1.15rem; font-weight:800; color:#0d2b4e; padding-top:8px;'>Layer Tersedia</div>", unsafe_allow_html=True)
+            with head_c2:
+                btn_add_layer = st.button("➕ Tambah Layer", key="btn_add_layer", use_container_width=True)
+
+            # --- LOGIKA TOMBOL TAMBAH ---
+            if btn_add_layer:
                 if uploaded_layer and layer_name_input.strip():
-                    # Deteksi tipe file
                     fname_lower = uploaded_layer.name.lower()
                     if fname_lower.endswith('.zip'):
                         detected_type = 'shp'
@@ -2623,107 +2627,87 @@ try:
                         detected_type = 'kml'
                     else:
                         detected_type = 'kmz'
-                    # Simpan layer ke penyimpanan permanen (Google Drive atau lokal)
                     entry = add_layer_to_storage(
                         layer_name_input.strip(),
                         uploaded_layer,
                         layer_color_config,
                         file_type=detected_type
                     )
-                    # Update session state dari storage
                     st.session_state.extra_layers = load_layers_from_storage()
                     st.success("Layer '" + layer_name_input + "' ditambahkan secara permanen!")
                     st.rerun()
                 elif not layer_name_input.strip():
                     st.warning("Masukkan nama layer terlebih dahulu.")
                 elif not uploaded_layer:
-                    st.warning("Pilih file KMZ/KML terlebih dahulu.")
+                    st.warning("Pilih file KMZ/KML/SHP terlebih dahulu.")
 
-            # Daftar layer tersedia
+            # --- 6. RENDER TABEL LAYER ---
+            st.markdown("<hr style='margin: 15px 0 10px 0; border-top: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
+            
             if st.session_state.extra_layers:
-                st.markdown(
-                    "<p style='font-size:0.75rem;font-weight:700;color:#0b3327;"
-                    "margin:14px 0 6px 0;'>Layer Tersedia:</p>",
-                    unsafe_allow_html=True
-                )
+                # Header Kolom Tabel
+                th1, th2, th3, th4, th5 = st.columns([2.8, 2.2, 2.2, 1.2, 1])
+                th1.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Layer</div>", unsafe_allow_html=True)
+                th2.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Warna</div>", unsafe_allow_html=True)
+                th3.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Kategori</div>", unsafe_allow_html=True)
+                th4.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Opacity</div>", unsafe_allow_html=True)
+                th5.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>Aksi</div>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 8px 0 12px 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
+
+                # Isi Tabel (Loop)
                 for i, layer in enumerate(st.session_state.extra_layers):
                     cc = layer.get('color_config', {'mode': 'single', 'color': '#27ae60'})
-                    dot_clr = (cc['color'] if cc['mode'] == 'single'
-                               else PALETTES.get(cc.get('palette', ''),
-                                                 ['#27ae60'])[0])
-                    lc1, lc2, lc3, lc4, lc5, lc6 = st.columns([2.5, 0.5, 0.8, 1.2, 1.8, 0.6])
+                    lc1, lc2, lc3, lc4, lc5 = st.columns([2.8, 2.2, 2.2, 1.2, 1])
+                    
+                    # KOLOM 1: Nama & Saklar (Mata)
                     with lc1:
-                        st.markdown(
-                            "<div style='font-size:0.78rem;color:#1a3a2a;padding-top:6px;'>"
-                            "<span style='display:inline-block;width:10px;height:10px;"
-                            "border-radius:50%;background:" + dot_clr + ";"
-                            "margin-right:6px;'></span>" + layer['name'] + "</div>",
-                            unsafe_allow_html=True
-                        )
-                    with lc2:
-                        vis = st.toggle(
-                            "👁", value=layer['visible'],
-                            key="layer_vis_" + str(i),
-                            help="Tampilkan/sembunyikan",
-                            label_visibility="collapsed"
-                        )
-                        if vis != layer['visible']:
-                            st.session_state.extra_layers[i]['visible'] = vis
-                            # Simpan ke storage
-                            save_layers_to_storage(st.session_state.extra_layers)
-                            st.rerun()
-                    with lc3:
-                        if cc['mode'] == 'single':
-                            new_color = st.color_picker(
-                                "Warna", cc.get('color', '#e74c3c'),
-                                key="layer_color_" + str(i),
-                                label_visibility="collapsed"
+                        dot_clr = cc['color'] if cc['mode'] == 'single' else PALETTES.get(cc.get('palette', ''), ['#27ae60'])[0]
+                        sub_c1, sub_c2 = st.columns([1, 4])
+                        with sub_c1:
+                            vis = st.toggle("👁", value=layer['visible'], key=f"layer_vis_{i}", label_visibility="collapsed")
+                            if vis != layer['visible']:
+                                st.session_state.extra_layers[i]['visible'] = vis
+                                save_layers_to_storage(st.session_state.extra_layers)
+                                st.rerun()
+                        with sub_c2:
+                            st.markdown(
+                                f"<div style='font-size:0.85rem; font-weight:600; color:#333; padding-top:6px;'>"
+                                f"<span style='color:#ccc; margin-right:10px; font-size:1.1rem;'>⠿</span>"
+                                f"<span style='display:inline-block; width:10px; height:10px; border-radius:50%; background:{dot_clr}; margin-right:8px;'></span>"
+                                f"{layer['name']}</div>",
+                                unsafe_allow_html=True
                             )
+
+                    # KOLOM 2: Warna / Palet
+                    with lc2:
+                        if cc['mode'] == 'single':
+                            new_color = st.color_picker("Warna", cc.get('color', '#e74c3c'), key=f"layer_color_{i}", label_visibility="collapsed")
                             if new_color != cc.get('color'):
                                 st.session_state.extra_layers[i]['color_config']['color'] = new_color
-                                # Simpan ke storage
                                 save_layers_to_storage(st.session_state.extra_layers)
                                 st.rerun()
                         else:
-                            pal_swatches = "".join(
-                                "<div style='width:9px;height:9px;background:" + c +
-                                ";border-radius:1px;display:inline-block;margin:1px;'></div>"
-                                for c in PALETTES.get(cc.get('palette',''), [])[:5]
-                            )
-                            st.markdown(
-                                "<div style='padding-top:4px;'>" + pal_swatches + "</div>",
-                                unsafe_allow_html=True
-                            )
-                    with lc4:
-                        if cc['mode'] == 'palette':
                             pal_list = list(PALETTES.keys())
                             cur_pal  = cc.get('palette', pal_list[0])
-                            new_pal  = st.selectbox(
-                                "Palet", pal_list,
-                                index=pal_list.index(cur_pal) if cur_pal in pal_list else 0,
-                                key="layer_pal_" + str(i),
-                                label_visibility="collapsed"
-                            )
+                            new_pal  = st.selectbox("Palet", pal_list, index=pal_list.index(cur_pal) if cur_pal in pal_list else 0, key=f"layer_pal_{i}", label_visibility="collapsed")
                             if new_pal != cur_pal:
                                 st.session_state.extra_layers[i]['color_config']['palette'] = new_pal
-                                # Simpan ke storage
                                 save_layers_to_storage(st.session_state.extra_layers)
                                 st.rerun()
-                    with lc5:
+
+                    # KOLOM 3: Kategori & Tombol Warna Custom
+                    with lc3:
                         if cc['mode'] == 'palette':
                             cols_tmp = layer.get('columns', [])
                             if cols_tmp:
                                 cur_attr = cc.get('attribute', cols_tmp[0])
-                                
-                                # Bagi lc5 menjadi dua (dropdown dan tombol palet)
                                 a_col, p_col = st.columns([3, 1])
                                 with a_col:
-                                    new_attr = st.selectbox("Atribut", cols_tmp, index=cols_tmp.index(cur_attr) if cur_attr in cols_tmp else 0, key="layer_attr_" + str(i), label_visibility="collapsed")
+                                    new_attr = st.selectbox("Atribut", cols_tmp, index=cols_tmp.index(cur_attr) if cur_attr in cols_tmp else 0, key=f"layer_attr_{i}", label_visibility="collapsed")
                                     if new_attr != cur_attr:
                                         st.session_state.extra_layers[i]['color_config']['attribute'] = new_attr
                                         save_layers_to_storage(st.session_state.extra_layers)
                                         st.rerun()
-                                
                                 with p_col:
                                     uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
                                     if cur_attr in uv_dict:
@@ -2731,7 +2715,6 @@ try:
                                             st.markdown("<b style='font-size:0.75rem;'>Warna per Kategori</b>", unsafe_allow_html=True)
                                             custom_cols = cc.get('custom_colors', {})
                                             pal_colors = PALETTES.get(cc.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
-                                            
                                             updated = False
                                             for idx, val in enumerate(uv_dict[cur_attr]):
                                                 val_str = str(val)
@@ -2747,16 +2730,39 @@ try:
                                                 st.rerun()
                             else:
                                 st.markdown("<span style='font-size:0.7rem;color:#e74c3c;'>Re-upload</span>", unsafe_allow_html=True)
-                    
-                    with lc6:
-                        if st.button("🗑️", key="del_layer_" + str(i), help="Hapus " + layer['name']):
+                        else:
+                            st.markdown("<div style='font-size:0.8rem; color:#aaa; padding-top:8px;'><i>-</i></div>", unsafe_allow_html=True)
+
+                    # KOLOM 4: Opacity Slider
+                    with lc4:
+                        current_opacity = layer.get('opacity', 0.7)
+                        new_opacity = st.slider(
+                            "Opacity",
+                            min_value=0.0,
+                            max_value=1.0,
+                            value=current_opacity,
+                            step=0.1,
+                            key=f"layer_opacity_{i}",
+                            label_visibility="collapsed"
+                        )
+                        if new_opacity != current_opacity:
+                            st.session_state.extra_layers[i]['opacity'] = new_opacity
+                            save_layers_to_storage(st.session_state.extra_layers)
+                            st.rerun()
+
+                    # KOLOM 5: Hapus
+                    with lc5:
+                        if st.button("🗑️", key=f"del_layer_{i}", help=f"Hapus {layer['name']}", use_container_width=True):
                             delete_layer_from_storage(layer['name'])
                             st.session_state.extra_layers = load_layers_from_storage()
                             st.rerun()
+                    
+                    st.markdown("<hr style='margin: 6px 0; border-top: 1px dashed #f0f0f0;'>", unsafe_allow_html=True)
+
             else:
                 st.markdown(
-                    "<p style='font-size:0.72rem;color:#aaa;font-style:italic;'>"
-                    "Belum ada layer tambahan.</p>",
+                    "<div style='text-align:center; padding:30px; background:#fafbfc; border-radius:10px; border:1px dashed #e0e0e0; color:#aaa; font-size:0.85rem; margin-top:10px;'>"
+                    "ℹ️ Belum ada layer yang ditambahkan.<br>Silakan masukkan informasi layer lalu klik tombol <b>➕ Tambah Layer</b> di atas.</div>",
                     unsafe_allow_html=True
                 )
 
@@ -3357,32 +3363,33 @@ try:
                             tip_aliases  = [f"{c}:" for c in tip_fields]
 
                             weight = 2 if not is_line else 3
+                            lyr_opacity = layer.get('opacity', 0.7)
 
                             if cc_l['mode'] == 'single':
-                                def _make_style(c, w):
+                                def _make_style(c, w, op):
                                     return lambda x: {
                                         'color': c, 'fillColor': c,
-                                        'weight': w, 'fillOpacity': 0.35, 'opacity': 0.9
+                                        'weight': w, 'fillOpacity': op, 'opacity': op
                                     }
                                 folium.GeoJson(
                                     gdf_layer, name=lyr_name, show=lyr_show,
-                                    style_function=_make_style(clr, weight),
+                                    style_function=_make_style(clr, weight, lyr_opacity),
                                     tooltip=folium.GeoJsonTooltip(
                                         fields=tip_fields, aliases=tip_aliases,
                                         localize=False
                                     ) if tip_fields else None
                                 ).add_to(m_map)
                             else:
-                                def _make_cat_style(cmap, fallback, col, w):
+                                def _make_cat_style(cmap, fallback, col, w, op):
                                     def _s(feature):
                                         nm = feature['properties'].get(col, '') if col else ''
                                         c  = cmap.get(nm, fallback)
                                         return {'color': c, 'fillColor': c,
-                                                'weight': w, 'fillOpacity': 0.42, 'opacity': 0.9}
+                                                'weight': w, 'fillOpacity': op, 'opacity': op}
                                     return _s
                                 folium.GeoJson(
                                     gdf_layer, name=lyr_name, show=lyr_show,
-                                    style_function=_make_cat_style(cmap_cat, clr, cat_col, weight),
+                                    style_function=_make_cat_style(cmap_cat, clr, cat_col, weight, lyr_opacity),
                                     tooltip=folium.GeoJsonTooltip(
                                         fields=tip_fields, aliases=tip_aliases,
                                         localize=False

@@ -2646,8 +2646,8 @@ try:
             
             if st.session_state.extra_layers:
                 # Header Kolom Tabel
-                th0, th1, th2, th3, th4, th5 = st.columns([0.5, 2.5, 2.0, 2.0, 1.0, 1.0])
-                th0.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'></div>", unsafe_allow_html=True)
+                th0, th1, th2, th3, th4, th5 = st.columns([1.0, 2.0, 2.0, 2.0, 1.0, 1.0])
+                th0.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>↕️</div>", unsafe_allow_html=True)
                 th1.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Layer</div>", unsafe_allow_html=True)
                 th2.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Warna</div>", unsafe_allow_html=True)
                 th3.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Kategori</div>", unsafe_allow_html=True)
@@ -2658,21 +2658,27 @@ try:
                 # Isi Tabel (Loop)
                 for i, layer in enumerate(st.session_state.extra_layers):
                     cc = layer.get('color_config', {'mode': 'single', 'color': '#27ae60'})
-                    lc0, lc1, lc2, lc3, lc4, lc5 = st.columns([0.5, 2.5, 2.0, 2.0, 1.0, 1.0])
+                    lc0, lc1, lc2, lc3, lc4, lc5 = st.columns([1.0, 2.0, 2.0, 2.0, 1.0, 1.0])
                     
-                    # KOLOM 0: Drag Handle
+                    # KOLOM 0: Drag Handle dengan Up/Down Buttons
                     with lc0:
-                        drag_col1, drag_col2 = st.columns([1, 1])
-                        with drag_col1:
-                            if i > 0 and st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer", use_container_width=True):
-                                st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
-                                save_layers_to_storage(st.session_state.extra_layers)
-                                st.rerun()
-                        with drag_col2:
-                            if i < len(st.session_state.extra_layers) - 1 and st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer", use_container_width=True):
-                                st.session_state.extra_layers[i], st.session_state.extra_layers[i+1] = st.session_state.extra_layers[i+1], st.session_state.extra_layers[i]
-                                save_layers_to_storage(st.session_state.extra_layers)
-                                st.rerun()
+                        col_up, col_down = st.columns([1, 1], gap="small")
+                        with col_up:
+                            if i > 0:
+                                if st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer", use_container_width=True):
+                                    st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
+                                    save_layers_to_storage(st.session_state.extra_layers)
+                                    st.rerun()
+                            else:
+                                st.write("")
+                        with col_down:
+                            if i < len(st.session_state.extra_layers) - 1:
+                                if st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer", use_container_width=True):
+                                    st.session_state.extra_layers[i], st.session_state.extra_layers[i+1] = st.session_state.extra_layers[i+1], st.session_state.extra_layers[i]
+                                    save_layers_to_storage(st.session_state.extra_layers)
+                                    st.rerun()
+                            else:
+                                st.write("")
 
                     # KOLOM 1: Nama & Saklar (Mata)
                     with lc1:

@@ -515,8 +515,8 @@ html, body, [class*="css"] {
 
 /* ── Lebar Popover (Melayang) ── */
 [data-testid="stPopoverBody"] {
-    min-width: 680px !important;
-    max-width: 90vw !important;
+    min-width: 1000px !important;
+    max-width: 95vw !important;
 }
 
 /* ── Tabs ── */
@@ -635,7 +635,204 @@ body.sidebar-shown [data-testid="stSidebar"] {
     background: #27ae60; border-radius: 4px;
 }
 
+/* ── Drag & Drop Layer Styles ── */
+.layer-row {
+    position: relative;
+    transition: all 0.2s ease;
+}
+.layer-row.drag-over {
+    background: #f0f9f4 !important;
+    border-left: 3px solid #27ae60 !important;
+    padding-left: 8px !important;
+}
+.layer-row.dragging {
+    opacity: 0.5;
+    background: #fafbfc !important;
+}
+.drag-handle {
+    cursor: grab;
+    user-select: none;
+    color: #999;
+    transition: all 0.2s ease;
+}
+.drag-handle:active {
+    cursor: grabbing;
+    color: #27ae60;
+}
+.drag-handle:hover {
+    color: #27ae60;
+    font-weight: bold;
+}
+
 </style>
+
+<script>
+// Drag & Drop untuk Layer Management - Enhanced Version
+(function() {
+    let draggedElement = null;
+    let draggedIndex = null;
+    let dragStartTime = 0;
+    
+    function findLayerRows() {
+        // Temukan semua layer rows yang memiliki data-layer-id
+        return Array.from(document.querySelectorAll('[data-layer-id]'));
+    }
+    
+    function setupLayerDragEvents() {
+        const layerRows = findLayerRows();
+        
+        layerRows.forEach((row, index) => {
+            // Hapus event listeners lama
+            row.ondragstart = null;
+            row.ondragend = null;
+            row.ondragover = null;
+            row.ondragleave = null;
+            row.ondrop = null;
+            
+            // Buat row draggable
+            row.draggable = true;
+            row.style.userSelect = 'none';
+            row.style.cursor = 'grab';
+            
+            // Drag start
+            row.ondragstart = function(e) {
+                draggedElement = this;
+                draggedIndex = index;
+                dragStartTime = Date.now();
+                this.classList.add('dragging');
+                if (e.dataTransfer) {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/html', this.innerHTML);
+                }
+            };
+            
+            // Drag end
+            row.ondragend = function(e) {
+                this.classList.remove('dragging');
+                this.style.cursor = 'grab';
+                draggedElement = null;
+                layerRows.forEach(r => r.classList.remove('drag-over'));
+            };
+            
+            // Drag over
+            row.ondragover = function(e) {
+                if (e.preventDefault) e.preventDefault();
+                if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                
+                if (this !== draggedElement && draggedElement !== null) {
+                    this.classList.add('drag-over');
+                }
+                return false;
+            };
+            
+            // Drag leave
+            row.ondragleave = function(e) {
+                // Only remove if leaving the actual row, not child elements
+                if (e.target === this || !this.contains(e.relatedTarget)) {
+                    this.classList.remove('drag-over');
+                }
+            };
+            
+            // Drop
+            row.ondrop = function(e) {
+                if (e.stopPropagation) e.stopPropagation();
+                if (e.preventDefault) e.preventDefault();
+                
+                this.classList.remove('drag-over');
+                
+                if (draggedElement !== null && this !== draggedElement) {
+                    const targetIndex = index;
+                    const sourceIndex = draggedIndex;
+                    
+                    if (sourceIndex !== targetIndex) {
+                        // Temukan tombol yang sesuai dan klik
+                        const allRows = findLayerRows();
+                        const moveDelta = sourceIndex < targetIndex ? 1 : -1;
+                        const step = sourceIndex < targetIndex ? 1 : -1;
+                        const iterations = Math.abs(targetIndex - sourceIndex);
+                        
+                        let delay = 100;
+                        
+                        for (let j = 0; j < iterations; j++) {
+                            const currentIndex = sourceIndex + (j * step);
+                            setTimeout(() => {
+                                try {
+                                    // Cari row saat ini
+                                    const currentRow = allRows[currentIndex];
+                                    if (currentRow) {
+                                        // Cari tombol di dalam row
+                                        const buttons = currentRow.querySelectorAll('button');
+                                        let targetBtn = null;
+                                        
+                                        if (step < 0) {
+                                            // Cari tombol UP
+                                            for (let btn of buttons) {
+                                                if (btn.textContent.includes('⬆')) {
+                                                    targetBtn = btn;
+                                                    break;
+                                                }
+                                            }
+                                        } else {
+                                            // Cari tombol DOWN
+                                            for (let btn of buttons) {
+                                                if (btn.textContent.includes('⬇')) {
+                                                    targetBtn = btn;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        
+                                        if (targetBtn && !targetBtn.disabled) {
+                                            targetBtn.click();
+                                        }
+                                    }
+                                } catch(err) {
+                                    console.log('Drag & drop action error:', err);
+                                }
+                            }, delay * (j + 1));
+                        }
+                    }
+                }
+                
+                draggedElement = null;
+                return false;
+            };
+        });
+    }
+    
+    // Setup on page load
+    function initDragDrop() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setupLayerDragEvents);
+        } else {
+            setupLayerDragEvents();
+        }
+    }
+    
+    // Initial setup
+    initDragDrop();
+    
+    // Re-setup on DOM changes (debounced)
+    let debounceTimer;
+    const observer = new MutationObserver(function(mutations) {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            try {
+                setupLayerDragEvents();
+            } catch(e) {
+                console.log('Drag & drop setup error:', e);
+            }
+        }, 300);
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+        characterData: false
+    });
+})();
+</script>
 """, unsafe_allow_html=True)
 
 
@@ -2657,6 +2854,9 @@ try:
 
                 # Isi Tabel (Loop)
                 for i, layer in enumerate(st.session_state.extra_layers):
+                    # Wrap row dengan data-layer-id untuk drag-and-drop
+                    st.markdown(f"<div data-layer-id='layer_{i}' class='layer-row' style='padding: 8px 0;'>", unsafe_allow_html=True)
+                    
                     cc = layer.get('color_config', {'mode': 'single', 'color': '#27ae60'})
                     lc_cols = st.columns([0.8, 2.5, 2.0, 2.0, 1.0, 1.0])
                     
@@ -2665,13 +2865,13 @@ try:
                         drag_btn1, drag_btn2 = st.columns([1, 1])
                         with drag_btn1:
                             if i > 0:
-                                if st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer"):
+                                if st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer atau drag up"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
                         with drag_btn2:
                             if i < len(st.session_state.extra_layers) - 1:
-                                if st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer"):
+                                if st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer atau drag down"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i+1] = st.session_state.extra_layers[i+1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
@@ -2782,6 +2982,7 @@ try:
                             st.session_state.extra_layers = load_layers_from_storage()
                             st.rerun()
                     
+                    st.markdown("</div>", unsafe_allow_html=True)
                     st.markdown("<hr style='margin: 6px 0; border-top: 1px dashed #f0f0f0;'>", unsafe_allow_html=True)
 
             else:

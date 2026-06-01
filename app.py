@@ -2646,7 +2646,8 @@ try:
             
             if st.session_state.extra_layers:
                 # Header Kolom Tabel
-                th1, th2, th3, th4, th5 = st.columns([2.8, 2.2, 2.2, 1.2, 1])
+                th0, th1, th2, th3, th4, th5 = st.columns([0.5, 2.5, 2.0, 2.0, 1.0, 1.0])
+                th0.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'></div>", unsafe_allow_html=True)
                 th1.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Layer</div>", unsafe_allow_html=True)
                 th2.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Warna</div>", unsafe_allow_html=True)
                 th3.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Kategori</div>", unsafe_allow_html=True)
@@ -2657,8 +2658,22 @@ try:
                 # Isi Tabel (Loop)
                 for i, layer in enumerate(st.session_state.extra_layers):
                     cc = layer.get('color_config', {'mode': 'single', 'color': '#27ae60'})
-                    lc1, lc2, lc3, lc4, lc5 = st.columns([2.8, 2.2, 2.2, 1.2, 1])
+                    lc0, lc1, lc2, lc3, lc4, lc5 = st.columns([0.5, 2.5, 2.0, 2.0, 1.0, 1.0])
                     
+                    # KOLOM 0: Drag Handle
+                    with lc0:
+                        drag_col1, drag_col2 = st.columns([1, 1])
+                        with drag_col1:
+                            if i > 0 and st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer", use_container_width=True):
+                                st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
+                                save_layers_to_storage(st.session_state.extra_layers)
+                                st.rerun()
+                        with drag_col2:
+                            if i < len(st.session_state.extra_layers) - 1 and st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer", use_container_width=True):
+                                st.session_state.extra_layers[i], st.session_state.extra_layers[i+1] = st.session_state.extra_layers[i+1], st.session_state.extra_layers[i]
+                                save_layers_to_storage(st.session_state.extra_layers)
+                                st.rerun()
+
                     # KOLOM 1: Nama & Saklar (Mata)
                     with lc1:
                         dot_clr = cc['color'] if cc['mode'] == 'single' else PALETTES.get(cc.get('palette', ''), ['#27ae60'])[0]
@@ -2712,18 +2727,26 @@ try:
                                     uv_dict = layer.get('unique_vals', layer.get('unique_values', {}))
                                     if cur_attr in uv_dict:
                                         with st.popover("🎨"):
-                                            st.markdown("<b style='font-size:0.75rem;'>Warna per Kategori</b>", unsafe_allow_html=True)
+                                            st.markdown("<b style='font-size:0.8rem; margin-bottom:12px;'>Warna per Kategori</b>", unsafe_allow_html=True)
                                             custom_cols = cc.get('custom_colors', {})
                                             pal_colors = PALETTES.get(cc.get('palette', 'Kategorikal'), PALETTES['Kategorikal'])
                                             updated = False
+                                            
+                                            # Gunakan container dengan spacing yang lebih baik
                                             for idx, val in enumerate(uv_dict[cur_attr]):
+                                                pop_c1, pop_c2 = st.columns([3, 1])
                                                 val_str = str(val)
                                                 default_c = pal_colors[idx % len(pal_colors)]
                                                 current_c = custom_cols.get(val_str, default_c)
-                                                new_c = st.color_picker(val_str, current_c, key=f"cp_{i}_{val_str}")
-                                                if new_c != current_c:
-                                                    custom_cols[val_str] = new_c
-                                                    updated = True
+                                                
+                                                with pop_c1:
+                                                    st.markdown(f"<span style='font-size:0.75rem; color:#666;'>{val_str}</span>", unsafe_allow_html=True)
+                                                with pop_c2:
+                                                    new_c = st.color_picker("", current_c, key=f"cp_{i}_{val_str}", label_visibility="collapsed")
+                                                    if new_c != current_c:
+                                                        custom_cols[val_str] = new_c
+                                                        updated = True
+                                            
                                             if updated:
                                                 st.session_state.extra_layers[i]['color_config']['custom_colors'] = custom_cols
                                                 save_layers_to_storage(st.session_state.extra_layers)

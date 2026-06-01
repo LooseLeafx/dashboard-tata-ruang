@@ -2646,42 +2646,38 @@ try:
             
             if st.session_state.extra_layers:
                 # Header Kolom Tabel
-                th0, th1, th2, th3, th4, th5 = st.columns([1.0, 2.0, 2.0, 2.0, 1.0, 1.0])
-                th0.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>↕️</div>", unsafe_allow_html=True)
-                th1.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Layer</div>", unsafe_allow_html=True)
-                th2.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Warna</div>", unsafe_allow_html=True)
-                th3.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Kategori</div>", unsafe_allow_html=True)
-                th4.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Opacity</div>", unsafe_allow_html=True)
-                th5.markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>Aksi</div>", unsafe_allow_html=True)
+                th_cols = st.columns([0.8, 2.5, 2.0, 2.0, 1.0, 1.0])
+                th_cols[0].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>↕️</div>", unsafe_allow_html=True)
+                th_cols[1].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Layer</div>", unsafe_allow_html=True)
+                th_cols[2].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Warna</div>", unsafe_allow_html=True)
+                th_cols[3].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Kategori</div>", unsafe_allow_html=True)
+                th_cols[4].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Opacity</div>", unsafe_allow_html=True)
+                th_cols[5].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>Aksi</div>", unsafe_allow_html=True)
                 st.markdown("<hr style='margin: 8px 0 12px 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
                 # Isi Tabel (Loop)
                 for i, layer in enumerate(st.session_state.extra_layers):
                     cc = layer.get('color_config', {'mode': 'single', 'color': '#27ae60'})
-                    lc0, lc1, lc2, lc3, lc4, lc5 = st.columns([1.0, 2.0, 2.0, 2.0, 1.0, 1.0])
+                    lc_cols = st.columns([0.8, 2.5, 2.0, 2.0, 1.0, 1.0])
                     
-                    # KOLOM 0: Drag Handle dengan Up/Down Buttons
-                    with lc0:
-                        col_up, col_down = st.columns([1, 1], gap="small")
-                        with col_up:
+                    # KOLOM 0: Drag Handle
+                    with lc_cols[0]:
+                        drag_btn1, drag_btn2 = st.columns([1, 1])
+                        with drag_btn1:
                             if i > 0:
-                                if st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer", use_container_width=True):
+                                if st.button("⬆", key=f"up_layer_{i}", help="Naikkan layer"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
-                            else:
-                                st.write("")
-                        with col_down:
+                        with drag_btn2:
                             if i < len(st.session_state.extra_layers) - 1:
-                                if st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer", use_container_width=True):
+                                if st.button("⬇", key=f"down_layer_{i}", help="Turunkan layer"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i+1] = st.session_state.extra_layers[i+1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
-                            else:
-                                st.write("")
 
                     # KOLOM 1: Nama & Saklar (Mata)
-                    with lc1:
+                    with lc_cols[1]:
                         dot_clr = cc['color'] if cc['mode'] == 'single' else PALETTES.get(cc.get('palette', ''), ['#27ae60'])[0]
                         sub_c1, sub_c2 = st.columns([1, 4])
                         with sub_c1:
@@ -2700,7 +2696,7 @@ try:
                             )
 
                     # KOLOM 2: Warna / Palet
-                    with lc2:
+                    with lc_cols[2]:
                         if cc['mode'] == 'single':
                             new_color = st.color_picker("Warna", cc.get('color', '#e74c3c'), key=f"layer_color_{i}", label_visibility="collapsed")
                             if new_color != cc.get('color'):
@@ -2717,7 +2713,7 @@ try:
                                 st.rerun()
 
                     # KOLOM 3: Kategori & Tombol Warna Custom
-                    with lc3:
+                    with lc_cols[3]:
                         if cc['mode'] == 'palette':
                             cols_tmp = layer.get('columns', [])
                             if cols_tmp:
@@ -2763,7 +2759,7 @@ try:
                             st.markdown("<div style='font-size:0.8rem; color:#aaa; padding-top:8px;'><i>-</i></div>", unsafe_allow_html=True)
 
                     # KOLOM 4: Opacity Slider
-                    with lc4:
+                    with lc_cols[4]:
                         current_opacity = layer.get('opacity', 0.7)
                         new_opacity = st.slider(
                             "Opacity",
@@ -2780,7 +2776,7 @@ try:
                             st.rerun()
 
                     # KOLOM 5: Hapus
-                    with lc5:
+                    with lc_cols[5]:
                         if st.button("🗑️", key=f"del_layer_{i}", help=f"Hapus {layer['name']}", use_container_width=True):
                             delete_layer_from_storage(layer['name'])
                             st.session_state.extra_layers = load_layers_from_storage()

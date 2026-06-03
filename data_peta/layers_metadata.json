@@ -26,19 +26,6 @@
     "opacity": 0.7
   },
   {
-    "name": "APJ Provinsi T.A 2024",
-    "filename": "b500357a_1778117357.kmz",
-    "color_config": {
-      "mode": "palette",
-      "palette": "Kategorikal"
-    },
-    "visible": false,
-    "type": "kmz",
-    "storage": "github",
-    "created_at": 1778117358.3079467,
-    "opacity": 0.7
-  },
-  {
     "name": "Jalan",
     "filename": "aaee4bd7_1780235286.shp",
     "color_config": {
@@ -98,6 +85,19 @@
         "Kep Men PU-PERA No 243/KPTS/M/2015 ttg Penetapan Ruas Jln dlm Jar Jln Primer menurut Fungsinya sbg Jln Arteri Primer(JAP) dan Jln Kolektor-1(JKP-1)"
       ]
     },
+    "opacity": 0.7
+  },
+  {
+    "name": "APJ Provinsi T.A 2024",
+    "filename": "b500357a_1778117357.kmz",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Kategorikal"
+    },
+    "visible": false,
+    "type": "kmz",
+    "storage": "github",
+    "created_at": 1778117358.3079467,
     "opacity": 0.7
   }
 ]

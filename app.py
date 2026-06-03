@@ -3442,7 +3442,7 @@ try:
                             tip_fields   = clean_cols[:6]
                             tip_aliases  = [f"{c}:" for c in tip_fields]
 
-                            weight = 2 if not is_line else 3
+                            weight = 2 if not is_line else 5
                             lyr_opacity = layer.get('opacity', 0.7)
 
                             if cc_l['mode'] == 'single':
@@ -3451,9 +3451,15 @@ try:
                                         'color': c, 'fillColor': c,
                                         'weight': w, 'fillOpacity': op, 'opacity': op
                                     }
+                                def _make_highlight(c, w, op):
+                                    return lambda x: {
+                                        'color': '#000000', 'fillColor': c,
+                                        'weight': w + 3, 'fillOpacity': op, 'opacity': 1.0
+                                    }
                                 folium.GeoJson(
                                     gdf_layer, name=lyr_name, show=lyr_show,
                                     style_function=_make_style(clr, weight, lyr_opacity),
+                                    highlight_function=_make_highlight(clr, weight, lyr_opacity),
                                     tooltip=folium.GeoJsonTooltip(
                                         fields=tip_fields, aliases=tip_aliases,
                                         localize=False
@@ -3467,9 +3473,17 @@ try:
                                         return {'color': c, 'fillColor': c,
                                                 'weight': w, 'fillOpacity': op, 'opacity': op}
                                     return _s
+                                def _make_cat_highlight(cmap, fallback, col, w, op):
+                                    def _h(feature):
+                                        nm = feature['properties'].get(col, '') if col else ''
+                                        c  = cmap.get(nm, fallback)
+                                        return {'color': '#000000', 'fillColor': c,
+                                                'weight': w + 3, 'fillOpacity': op, 'opacity': 1.0}
+                                    return _h
                                 folium.GeoJson(
                                     gdf_layer, name=lyr_name, show=lyr_show,
                                     style_function=_make_cat_style(cmap_cat, clr, cat_col, weight, lyr_opacity),
+                                    highlight_function=_make_cat_highlight(cmap_cat, clr, cat_col, weight, lyr_opacity),
                                     tooltip=folium.GeoJsonTooltip(
                                         fields=tip_fields, aliases=tip_aliases,
                                         localize=False

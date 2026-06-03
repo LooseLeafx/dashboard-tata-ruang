@@ -1583,10 +1583,6 @@ try:
         if st.session_state.extra_layers:
             save_layers_to_storage(st.session_state.extra_layers)
     
-    # Session state untuk drag-drop layers
-    if "drag_source_layer" not in st.session_state:
-        st.session_state.drag_source_layer = None
-    
     if "selected_srs_map" not in st.session_state:
         st.session_state.selected_srs_map = None
 
@@ -2705,61 +2701,40 @@ try:
 
                 # Isi Tabel (Loop)
                 for i, layer in enumerate(st.session_state.extra_layers):
-                    # Wrap row dengan data-layer-id untuk drag-and-drop
-                    is_drag_source = st.session_state.drag_source_layer == layer['name']
-                    row_bg = "#fef3cd" if is_drag_source else "#fff"
-                    row_border = "3px solid #e74c3c" if is_drag_source else "1px solid #f0f0f0"
-                    st.markdown(f"<div data-layer-id='layer_{i}' class='layer-row' style='padding: 10px 8px; border-radius: 6px; background: {row_bg}; border-left: {row_border};'>", unsafe_allow_html=True)
+                    # Wrap row
+                    st.markdown(f"<div class='layer-row' style='padding: 10px 8px; border-radius: 6px; background: #fff; border-left: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
                     
                     cc = layer.get('color_config', {'mode': 'single', 'color': '#27ae60'})
                     lc_cols = st.columns([1.2, 2.5, 2.0, 2.0, 1.0, 0.8])
                     
-                    # KOLOM 0: Grab/Drop Buttons untuk Drag-Drop
+                    # KOLOM 0: Up/Down Buttons
                     with lc_cols[0]:
-                        drag_cols = st.columns([1.3, 0.7, 0.7])
-                        
-                        # Grab/Drop button (drag source selector)
-                        with drag_cols[0]:
-                            if st.session_state.drag_source_layer is None:
-                                # Mode normal - show grab button
-                                if st.button(f"🔷 Grab", key=f"grab_{i}", use_container_width=True, help="Pilih untuk di-drag"):
-                                    st.session_state.drag_source_layer = layer['name']
-                                    st.rerun()
-                            else:
-                                # Ada yang di-grab
-                                if is_drag_source:
-                                    # Ini yang di-grab - show cancel
-                                    if st.button(f"✓ Cancel", key=f"cancel_{i}", use_container_width=True, help="Cancel grab"):
-                                        st.session_state.drag_source_layer = None
-                                        st.rerun()
-                                else:
-                                    # Bukan ini - show drop here
-                                    if st.button(f"▼ Drop", key=f"drop_{i}", use_container_width=True, help="Drop di sini"):
-                                        # Find source index
-                                        src_idx = next((idx for idx, l in enumerate(st.session_state.extra_layers) if l['name'] == st.session_state.drag_source_layer), -1)
-                                        if src_idx >= 0:
-                                            # Move layer ke posisi ini
-                                            src_layer = st.session_state.extra_layers.pop(src_idx)
-                                            st.session_state.extra_layers.insert(i if src_idx > i else i-1, src_layer)
-                                            save_layers_to_storage(st.session_state.extra_layers)
-                                            st.session_state.drag_source_layer = None
-                                            st.rerun()
+                        action_cols = st.columns([1, 1], gap="small")
                         
                         # Up button
-                        with drag_cols[1]:
-                            if i > 0 and st.session_state.drag_source_layer is None:
-                                if st.button("⬆", key=f"up_{i}", use_container_width=True, help="Move up"):
+                        with action_cols[0]:
+                            if i > 0:
+                                st.markdown(f"""
+                                <style>
+                                    .btn-up-{i} {{ text-align: center; }}
+                                </style>
+                                """, unsafe_allow_html=True)
+                                if st.button("▲", key=f"up_{i}", use_container_width=True, help="Pindah ke atas"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
+                            else:
+                                st.markdown("<div style='height:38px;'></div>", unsafe_allow_html=True)
                         
                         # Down button
-                        with drag_cols[2]:
-                            if i < len(st.session_state.extra_layers) - 1 and st.session_state.drag_source_layer is None:
-                                if st.button("⬇", key=f"down_{i}", use_container_width=True, help="Move down"):
+                        with action_cols[1]:
+                            if i < len(st.session_state.extra_layers) - 1:
+                                if st.button("▼", key=f"down_{i}", use_container_width=True, help="Pindah ke bawah"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i+1] = st.session_state.extra_layers[i+1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
+                            else:
+                                st.markdown("<div style='height:38px;'></div>", unsafe_allow_html=True)
 
                     # KOLOM 1: Nama & Saklar (Mata)
                     with lc_cols[1]:

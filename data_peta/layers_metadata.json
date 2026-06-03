@@ -44,7 +44,14 @@
     "color_config": {
       "mode": "palette",
       "palette": "Kategorikal",
-      "attribute": "Fungsi"
+      "attribute": "Fungsi",
+      "custom_colors": {
+        "Strategis Provinsi": "#252525",
+        "Kolektor Primer 3": "#525252",
+        "Kolektor Primer 2": "#737373",
+        "Arteri Primer": "#969696",
+        "Kolektor Primer 1": "#bdbdbd"
+      }
     },
     "visible": false,
     "type": "shp",

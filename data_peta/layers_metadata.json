@@ -44,7 +44,7 @@
     "color_config": {
       "mode": "palette",
       "palette": "Netral Abu",
-      "attribute": "Sumber"
+      "attribute": "Fungsi"
     },
     "visible": false,
     "type": "shp",

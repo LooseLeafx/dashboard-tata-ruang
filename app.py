@@ -2691,7 +2691,6 @@ try:
             if st.session_state.extra_layers:
                 # Header Kolom Tabel
                 th_cols = st.columns([0.8, 2.5, 2.0, 2.0, 1.0, 1.0])
-                th_cols[0].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666; text-align:center;'>↕️</div>", unsafe_allow_html=True)
                 th_cols[1].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Layer</div>", unsafe_allow_html=True)
                 th_cols[2].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Warna</div>", unsafe_allow_html=True)
                 th_cols[3].markdown("<div style='font-size:0.75rem; font-weight:700; color:#666;'>Kategori</div>", unsafe_allow_html=True)
@@ -2709,22 +2708,17 @@ try:
                     
                     # KOLOM 0: Up/Down Buttons
                     with lc_cols[0]:
-                        action_cols = st.columns([1, 1], gap="small")
+                        action_cols = st.columns([0.5, 0.5], gap="small")
                         
                         # Up button
                         with action_cols[0]:
                             if i > 0:
-                                st.markdown(f"""
-                                <style>
-                                    .btn-up-{i} {{ text-align: center; }}
-                                </style>
-                                """, unsafe_allow_html=True)
                                 if st.button("▲", key=f"up_{i}", use_container_width=True, help="Pindah ke atas"):
                                     st.session_state.extra_layers[i], st.session_state.extra_layers[i-1] = st.session_state.extra_layers[i-1], st.session_state.extra_layers[i]
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
                             else:
-                                st.markdown("<div style='height:38px;'></div>", unsafe_allow_html=True)
+                                st.markdown("")
                         
                         # Down button
                         with action_cols[1]:
@@ -2734,7 +2728,7 @@ try:
                                     save_layers_to_storage(st.session_state.extra_layers)
                                     st.rerun()
                             else:
-                                st.markdown("<div style='height:38px;'></div>", unsafe_allow_html=True)
+                                st.markdown("")
 
                     # KOLOM 1: Nama & Saklar (Mata)
                     with lc_cols[1]:

@@ -62,19 +62,6 @@
     "opacity": 0.7
   },
   {
-    "name": "APJ Provinsi T.A 2025",
-    "filename": "00b83e11_1778118266.kmz",
-    "color_config": {
-      "mode": "palette",
-      "palette": "Kategorikal"
-    },
-    "visible": false,
-    "type": "kmz",
-    "storage": "github",
-    "created_at": 1778118267.8962412,
-    "opacity": 0.7
-  },
-  {
     "name": "APJ Provinsi T.A 2024",
     "filename": "b500357a_1778117357.kmz",
     "color_config": {

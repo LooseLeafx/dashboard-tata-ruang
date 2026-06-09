@@ -178,5 +178,90 @@
       ]
     },
     "opacity": 0.7
+  },
+  {
+    "name": "APJ Provinsi Tahun 2025",
+    "filename": "f0a23e61_1780972762.kmz",
+    "color_config": {
+      "mode": "palette",
+      "palette": "Hijau Alam"
+    },
+    "visible": false,
+    "type": "kmz",
+    "storage": "github",
+    "created_at": 1780972763.1402545,
+    "columns": [
+      "id",
+      "Name",
+      "No",
+      "Ruas_Jalan",
+      "Sumber_Lis",
+      "Tahun_Pasa",
+      "Koodinat",
+      "Koodinat_X",
+      "Koodinat_Y",
+      "Sumber_Dan",
+      "Aset",
+      "Jenis_PJU",
+      "SRS"
+    ],
+    "unique_vals": {
+      "Name": [
+        "PRAMBANAN-PIYUNGAN",
+        "KLEPU-SILUWOK",
+        "SAMPAKAN-SINGOSAREN",
+        "PALBAPANG-SAMAS",
+        "NANGGULAN-TEGALSARI",
+        "DEKSO-SAMIGALUH-PAGERHARJO",
+        "WONOSARI-KARANGMOJO",
+        "WONOSARI-NGLIPAR",
+        "YOGYAKARTA-KALIURANG",
+        "PATUK-TERONG",
+        "IMOGIRI-DODOGAN",
+        "MULO-BARON"
+      ],
+      "Ruas_Jalan": [
+        "PRAMBANAN-PIYUNGAN",
+        "KLEPU-SILUWOK",
+        "SAMPAKAN-SINGOSAREN",
+        "PALBAPANG-SAMAS",
+        "NANGGULAN-TEGALSARI",
+        "DEKSO-SAMIGALUH-PAGERHARJO",
+        "WONOSARI-KARANGMOJO",
+        "WONOSARI-NGLIPAR",
+        "YOGYAKARTA-KALIURANG",
+        "PATUK-TERONG",
+        "IMOGIRI-DODOGAN",
+        "MULO-BARON"
+      ],
+      "Sumber_Lis": [
+        "PLN"
+      ],
+      "Tahun_Pasa": [
+        "2025"
+      ],
+      "Sumber_Dan": [
+        "DAIS",
+        ""
+      ],
+      "Aset": [
+        "Provinsi"
+      ],
+      "Jenis_PJU": [
+        "SMART APJ"
+      ],
+      "SRS": [
+        "PRAMBANAN-CANDI IJO",
+        "Pendukung SRS Girigondo",
+        "Kerto Pleret",
+        "Pantai Samas - Parangtritis",
+        "Perbukitan Menoreh",
+        "Sokoliman",
+        "Pendukung SRS Sokoliman",
+        "Gunung Merapi",
+        "Karst Gunungsewu"
+      ]
+    },
+    "opacity": 0.7
   }
 ]

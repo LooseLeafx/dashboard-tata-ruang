@@ -62,19 +62,6 @@
     "opacity": 0.7
   },
   {
-    "name": "Batas Administrasi Kabupaten",
-    "filename": "5e43c6e7_1778075411.kmz",
-    "color_config": {
-      "mode": "palette",
-      "palette": "Kategorikal"
-    },
-    "visible": false,
-    "type": "kmz",
-    "storage": "github",
-    "created_at": 1778075413.2994676,
-    "opacity": 0.7
-  },
-  {
     "name": "APJ Provinsi T.A 2025",
     "filename": "00b83e11_1778118266.kmz",
     "color_config": {

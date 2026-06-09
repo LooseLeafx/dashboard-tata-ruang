@@ -60,18 +60,5 @@
       ]
     },
     "opacity": 0.7
-  },
-  {
-    "name": "APJ Provinsi T.A 2024",
-    "filename": "b500357a_1778117357.kmz",
-    "color_config": {
-      "mode": "palette",
-      "palette": "Kategorikal"
-    },
-    "visible": false,
-    "type": "kmz",
-    "storage": "github",
-    "created_at": 1778117358.3079467,
-    "opacity": 0.7
   }
 ]

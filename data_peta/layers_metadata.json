@@ -67,7 +67,10 @@
     "color_config": {
       "mode": "palette",
       "palette": "Hijau Alam",
-      "attribute": "Ruas_Jalan"
+      "attribute": "Ruas_Jalan",
+      "custom_colors": {
+        "": "#1a9850"
+      }
     },
     "visible": false,
     "type": "kmz",

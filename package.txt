@@ -1,5 +1,0 @@
-    ```text
-    libgdal-dev
-    gdal-bin
-    ```
-    
